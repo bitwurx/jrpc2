@@ -1,6 +1,6 @@
 # Golang JSON-RPC 2.0 HTTP Server
 
-[![GoDoc](https://godoc.org/github.com/golang/gddo?status.png)](https://godoc.org/github.com/bitwurx/jrpc2)
+[![GoDoc](https://godoc.org/github.com/bitwurx/jrpc2?status.png)](https://godoc.org/github.com/bitwurx/jrpc2)
 
 This library is an HTTP server implementation of the [JSON-RPC 2.0 Specification](http://www.jsonrpc.org/specification). The library is fully spec compliant with support for named and positional arguments and batch requests.
 
