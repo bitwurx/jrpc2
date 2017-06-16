@@ -204,6 +204,7 @@ func (s *Server) HandleRequest(w http.ResponseWriter, req *RequestObject) {
 }
 
 // HandleBatch validates, calls, and returns the results of a batch of rpc client requests
+// TODO: make batch method calls concurrent
 func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 	w.Header().Set("Content-Type", "application/json")
 	if len(reqs) < 1 {
