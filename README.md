@@ -1,67 +1,75 @@
-Golang JSON-RPC 2.0 Server
-===
+# Golang JSON-RPC 2.0 HTTP Server
 
 This library is an HTTP server implementation of the [JSON-RPC 2.0 Specification](http://www.jsonrpc.org/specification). The library is fully spec compliant with support for named and positional arguments and batch requests.
 
-### Examples
+### Installation
+```sh
+go get github.com/bitwurx/jrpc2
+```
+
+### Quickstart
 
 ```golang
 package main
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
+    "encoding/json"
+    "errors"
+    "fmt"
+
+    "github.com/bitwurx/jrpc2"
 )
 
 // This struct is used for unmarshaling the method params
 type AddParams struct {
-	X *float64 `json:"x"`
-	Y *float64 `json:"y"`
+    X *float64 `json:"x"`
+    Y *float64 `json:"y"`
 }
 
 // Each params struct must implement the FromPositional method.
 // This method will be passed an array of interfaces if positional parameters
 // are passed in the rpc call
 func (ap *AddParams) FromPositional(params []interface{}) error {
-	if len(params) != 2 {
-		return errors.New(fmt.Sprintf("exactly two integers are required"))
-	}
+    if len(params) != 2 {
+        return errors.New(fmt.Sprintf("exactly two integers are required"))
+    }
 
-	x := params[0].(float64)
-	y := params[1].(float64)
-	ap.X = &x
-	ap.Y = &y
+    x := params[0].(float64)
+    y := params[1].(float64)
+    ap.X = &x
+    ap.Y = &y
 
-	return nil
+    return nil
 }
 
 // Each method should match the prototype <fn(json.RawMessage) (inteface{}, *ErrorObject)>
-func Add(params json.RawMessage) (interface{}, *ErrorObject) {
-	p := new(AddParams)
+func Add(params json.RawMessage) (interface{}, *jrpc2.ErrorObject) {
+    p := new(AddParams)
 
-	// ParseParams is a helper function that automatically invokes the FromPositional
-	// method on the params instance if required
-	if err := ParseParams(params, p); err != nil {
-		return nil, err
-	}
+    // ParseParams is a helper function that automatically invokes the FromPositional
+    // method on the params instance if required
+    if err := jrpc2.ParseParams(params, p); err != nil {
+        return nil, err
+    }
 
-	if p.X == nil || p.Y == nil {
-		return nil, &ErrorObject{
-			Code:    InvalidParamsCode,
-			Message: InvalidParamsMsg,
-			Data:    "exactly two integers are required",
-		}
-	}
+    if p.X == nil || p.Y == nil {
+        return nil, &jrpc2.ErrorObject{
+            Code:    jrpc2.InvalidParamsCode,
+            Message: jrpc2.InvalidParamsMsg,
+            Data:    "exactly two integers are required",
+        }
+    }
 
-	return *p.X + *p.Y, nil
+    return *p.X + *p.Y, nil
 }
 
 func main() {
-	s := NewServer(":8888", "/api/v1/rpc") // pass the server host and rpc handler path
-	s.Register("add", Add)                 // register the add method
-	s.Start()                              // start the rpc server
+    s := jrpc2.NewServer(":8888", "/api/v1/rpc") // pass the server host and rpc handler path
+    s.Register("add", Add)                       // register the add method
+    s.Start()                                    // start the rpc server
 }
+
+
 ```
 When defining your own registered methods with the rpc server it is important to consider both named and positional parameters per the specification. 
 
