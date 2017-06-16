@@ -21,8 +21,10 @@
 package jrpc2
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -38,6 +40,8 @@ const (
 	MethodNotFoundCode ErrorCode = -32601
 	InvalidParamsCode  ErrorCode = -32602
 	InternalErrorCode  ErrorCode = -32603
+	MethodExistsCode   ErrorCode = -32000
+	URLSchemeErrorCode ErrorCode = -32001
 )
 
 // Error message
@@ -48,6 +52,8 @@ const (
 	InvalidParamsMsg  ErrorMsg = "Invalid params"
 	InternalErrorMsg  ErrorMsg = "Internal error"
 	ServerErrorMsg    ErrorMsg = "Server error"
+	MethodExistsMsg   ErrorMsg = "Method exists"
+	URLSchemeErrorMsg ErrorMsg = "URL scheme error"
 )
 
 type ErrorCode int
@@ -57,7 +63,7 @@ type ErrorMsg string
 type ErrorObject struct {
 	// Code indicates the error type that occurred.
 	// Message provides a short description of the error.
-	// Data is a primitive or structured value that contains additional information
+	// Data is a primitive or structured value that contains additional information.
 	// about the error.
 	Code    ErrorCode   `json:"code"`
 	Message ErrorMsg    `json:"message"`
@@ -68,30 +74,30 @@ type ErrorObject struct {
 type RequestObject struct {
 	// Jsonrpc specifies the version of the JSON-RPC protocol.
 	// Must be exactly "2.0".
-	// Method contains the name of the method to be invoked
+	// Method contains the name of the method to be invoked.
 	// Params is a structured value that holds the parameter values to be used during
 	// the invocation of the method.
-	// Id is a unique identifier established by the client
+	// Id is a unique identifier established by the client.
 	Jsonrpc string          `json:"jsonrpc"`
 	Method  interface{}     `json:"method"`
 	Params  json.RawMessage `json:"params"`
 	Id      interface{}     `json:"id"`
 }
 
-// ResponseObject represents a response object
+// ResponseObject represents a response object.
 type ResponseObject struct {
 	// Jsonrpc specifies the version of the JSON-RPC protocol.
 	// Must be exactly "2.0".
-	// Error contains the error object if an error occurred while processing the request
-	// Result contains the result of the called method
-	// Id contains the client established request id or null
+	// Error contains the error object if an error occurred while processing the request.
+	// Result contains the result of the called method.
+	// Id contains the client established request id or null.
 	Jsonrpc string       `json:"jsonrpc"`
 	Error   *ErrorObject `json:"error,omitempty"`
 	Result  interface{}  `json:"result,omitempty"`
 	Id      interface{}  `json:"id"`
 }
 
-// Params defines methods for processing request parameters
+// Params defines methods for processing request parameters.
 type Params interface {
 	FromPositional([]interface{}) error
 }
@@ -99,7 +105,7 @@ type Params interface {
 // ParseParams processes the params data structure from the request.
 // Named parameters will be umarshaled into the provided Params inteface.
 // Positional arguments will be passed to Params interface's FromPositional method for
-// extraction
+// extraction.
 func ParseParams(params json.RawMessage, p Params) *ErrorObject {
 	if err := json.Unmarshal(params, p); err != nil {
 		errObj := &ErrorObject{
@@ -123,7 +129,7 @@ func ParseParams(params json.RawMessage, p Params) *ErrorObject {
 
 // NewResponse creates a bytes encoded representation of a response.
 // Both result and error response objects can be created.
-// The nl flag specifies if the response should be newline terminated
+// The nl flag specifies if the response should be newline terminated.
 func NewResponse(result interface{}, errObj *ErrorObject, id interface{}, nl bool) []byte {
 	var resp bytes.Buffer
 	body, _ := json.Marshal(&ResponseObject{
@@ -141,18 +147,18 @@ func NewResponse(result interface{}, errObj *ErrorObject, id interface{}, nl boo
 	return resp.Bytes()
 }
 
-// Batch is a wrapper around multiple response objects
+// Batch is a wrapper around multiple response objects.
 type Batch struct {
-	// Responses contains the byte representations of a batch of responses
+	// Responses contains the byte representations of a batch of responses.
 	Responses [][]byte
 }
 
-// AddResponse inserts the response into the batch responses
+// AddResponse inserts the response into the batch responses.
 func (b *Batch) AddResponse(resp []byte) {
 	b.Responses = append(b.Responses, resp)
 }
 
-// MakeResponse creates a bytes encoded representation of a response object
+// MakeResponse creates a bytes encoded representation of a response object.
 func (b *Batch) MakeResponse() []byte {
 	var resp bytes.Buffer
 	resp.WriteString("[")
@@ -169,17 +175,25 @@ func (b *Batch) MakeResponse() []byte {
 	return resp.Bytes()
 }
 
-// Server represents a jsonrpc 2.0 capable web server
-type Server struct {
-	// Host is the host:port of the server
-	// Route is the path to the rpc api
-	// Methods contains the mapping of registered methods
-	Host    string
-	Route   string
-	Methods map[string]func(params json.RawMessage) (interface{}, *ErrorObject)
+// Method represents an rpc method.
+type Method struct {
+	// Url is the url of the server that handles the method.
+	// Method is the callable function
+	Url    string
+	Method func(params json.RawMessage) (interface{}, *ErrorObject)
 }
 
-// rpcHandler handles incoming rpc client requests
+// Server represents a jsonrpc 2.0 capable web server.
+type Server struct {
+	// Host is the host:port of the server.
+	// Route is the path to the rpc api.
+	// Methods contains the mapping of registered methods.
+	Host    string
+	Route   string
+	Methods map[string]Method
+}
+
+// rpcHandler handles incoming rpc client requests.
 func (s *Server) rpcHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := s.ParseRequest(w, r); err != nil {
@@ -188,7 +202,7 @@ func (s *Server) rpcHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleRequest validates, calls, and returns the result of a single rpc client request
+// HandleRequest validates, calls, and returns the result of a single rpc client request.
 func (s *Server) HandleRequest(w http.ResponseWriter, req *RequestObject) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := s.ValidateRequest(req); err != nil {
@@ -204,7 +218,8 @@ func (s *Server) HandleRequest(w http.ResponseWriter, req *RequestObject) {
 	}
 }
 
-// HandleBatch validates, calls, and returns the results of a batch of rpc client requests
+// HandleBatch validates, calls, and returns the results of a batch of rpc client requests.
+// Batch methods are called in individual goroutines and collected in a single response.
 func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 	w.Header().Set("Content-Type", "application/json")
 	if len(reqs) < 1 {
@@ -242,13 +257,65 @@ func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 	}
 }
 
-// Register maps the provided method to the given name for later method calls
-func (s *Server) Register(name string, method func(params json.RawMessage) (interface{}, *ErrorObject)) {
+// RegisterRPCParams is a paramater spec for the RegisterRPC method.
+type RegisterRPCParams struct {
+	// Name is the the name of the method being registered.
+	// Url is the url of the server that handles the method.
+	Name *string
+	Url  *string
+}
+
+// FromPositional extracts the positional name and url parameters from a list of
+// parameters.
+func (rp *RegisterRPCParams) FromPositional(params []interface{}) error {
+	if len(params) != 2 {
+		return errors.New("register requires name and url parameters")
+	}
+
+	name := params[0].(string)
+	url := params[1].(string)
+	rp.Name = &name
+	rp.Url = &url
+
+	return nil
+}
+
+// RegisterRPC accepts a method name and server url to register a proxy rpc method.
+// A method name can be only be registered once.
+func (s *Server) RegisterRPC(params json.RawMessage) (interface{}, *ErrorObject) {
+	p := new(RegisterRPCParams)
+
+	if err := ParseParams(params, p); err != nil {
+		return nil, err
+	}
+
+	if !strings.HasPrefix(*p.Url, "http://") && !strings.HasPrefix(*p.Url, "https://") {
+		return nil, &ErrorObject{
+			Code:    URLSchemeErrorCode,
+			Message: URLSchemeErrorMsg,
+			Data:    "url scheme must match http?s://",
+		}
+	}
+
+	if _, ok := s.Methods[*p.Name]; ok {
+		return nil, &ErrorObject{
+			Code:    MethodExistsCode,
+			Message: MethodExistsMsg,
+		}
+	}
+
+	s.Methods[*p.Name] = Method{Url: *p.Url}
+
+	return "success", nil
+}
+
+// Register maps the provided method to the given name for later method calls.
+func (s *Server) Register(name string, method Method) {
 	s.Methods[name] = method
 }
 
-// ParseRequest parses the json request body and unpacks into one or more
-// RequestObjects for single or batch processing
+// ParseRequest parses the json request body and unpacks into one or more.
+// RequestObjects for single or batch processing.
 func (s *Server) ParseRequest(w http.ResponseWriter, r *http.Request) *ErrorObject {
 	var errObj *ErrorObject
 	req := new(RequestObject)
@@ -290,7 +357,7 @@ func (s *Server) ParseRequest(w http.ResponseWriter, r *http.Request) *ErrorObje
 	return errObj
 }
 
-// ValidateRequest validates that the request json contains valid values
+// ValidateRequest validates that the request json contains valid values.
 func (s *Server) ValidateRequest(req *RequestObject) *ErrorObject {
 	if req.Jsonrpc != "2.0" {
 		return &ErrorObject{
@@ -319,15 +386,60 @@ func (s *Server) ValidateRequest(req *RequestObject) *ErrorObject {
 	return nil
 }
 
-// Call invokes the named method with the provided parameters
+// Call invokes the named method with the provided parameters.
+// If a method from the server Methods has a Method member will be called locally.
+// If a method from the server Methods has a Url member it will be called by proxy.
 func (s *Server) Call(name interface{}, params json.RawMessage) (interface{}, *ErrorObject) {
-	if method, ok := s.Methods[name.(string)]; !ok {
+	method, ok := s.Methods[name.(string)];
+	if !ok {
 		return nil, &ErrorObject{
 			Code:    MethodNotFoundCode,
 			Message: MethodNotFoundMsg,
 		}
-	} else {
-		return method(params)
+	}
+	if method.Method != nil {
+		return method.Method(params)
+	}
+	if method.Url != "" {
+		req := &RequestObject{
+			Jsonrpc: "2.0",
+			Method:  name,
+			Params:  params,
+			Id:      "1",
+		}
+		body, err := json.Marshal(req)
+		if err != nil {
+			return nil, &ErrorObject{
+				Code:    InternalErrorCode,
+				Message: InternalErrorMsg,
+				Data:    err.Error(),
+			}
+		}
+		data, err := http.Post(method.Url, "application/json", bytes.NewBuffer(body))
+		if err != nil {
+			return nil, &ErrorObject{
+				Code:    InternalErrorCode,
+				Message: InternalErrorMsg,
+				Data:    err.Error(),
+			}
+		}
+
+		resp := new(ResponseObject)
+		rdr := bufio.NewReader(data.Body)
+		dec := json.NewDecoder(rdr)
+		dec.Decode(&resp)
+
+		if resp.Result != nil {
+			return resp.Result, nil
+		} else if resp.Error != nil {
+			return nil, resp.Error
+		}
+	}
+
+	return nil, &ErrorObject{
+		Code:    InternalErrorCode,
+		Message: InternalErrorMsg,
+		Data:    "Unable to call provided method",
 	}
 }
 
@@ -343,8 +455,10 @@ func NewServer(host string, route string) *Server {
 	s := &Server{
 		Host:    host,
 		Route:   route,
-		Methods: make(map[string]func(params json.RawMessage) (interface{}, *ErrorObject)),
+		Methods: make(map[string]Method),
 	}
+
+	s.Methods["register"] = Method{Method: s.RegisterRPC}
 
 	return s
 }

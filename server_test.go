@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"testing"
+	"time"
 )
 
 type SumParams struct {
@@ -71,6 +73,14 @@ func Subtract(params json.RawMessage) (interface{}, *ErrorObject) {
 		return nil, err
 	}
 
+	if *p.X == 999.0 && *p.Y == 999.0 {
+		return nil, &ErrorObject{
+			Code:    -32001,
+			Message: ServerErrorMsg,
+			Data:    "Mock error",
+		}
+	}
+
 	if p.X == nil || p.Y == nil {
 		return nil, &ErrorObject{
 			Code:    InvalidParamsCode,
@@ -83,14 +93,38 @@ func Subtract(params json.RawMessage) (interface{}, *ErrorObject) {
 }
 
 func init() {
-	go func() {
-		s := NewServer(":31500", "/api/v1/rpc")
-		s.Register("sum", Sum)
-		s.Register("subtract", Subtract)
-		s.Register("update", func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil })
-		s.Register("foobar", func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil })
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() { // subtract method remote server
+		s := NewServer(":31501", "/api/v2/rpc")
+		s.Register("subtract", Method{Method: Subtract})
 		s.Start()
 	}()
+
+	go func() { // primary server with subtract remote server proxy
+		s := NewServer(":31500", "/api/v1/rpc")
+		s.Register("sum", Method{Method: Sum})
+		s.Register("update", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
+		s.Register("foobar", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
+		s.Start()
+	}()
+
+	go func() {
+		for {
+			body := `{"jsonrpc": "2.0", "method": "register", "params": ["subtract", "http://localhost:31501/api/v2/rpc"]}`
+			buf := bytes.NewBuffer([]byte(body))
+			_, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
+			if err != nil {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			break
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
 }
 
 func TestRpcCallWithPositionalParamters(t *testing.T) {
@@ -133,6 +167,41 @@ func TestRpcCallWithPositionalParamters(t *testing.T) {
 		if result.Id != tc.Id {
 			t.Fatalf("Expected id to be %d", tc.Id)
 		}
+	}
+}
+
+func TestRpcCallWithPositionalParamtersError(t *testing.T) {
+	var result struct {
+		Jsonrpc string      `json:"jsonrpc"`
+		Result  interface{} `json:"result"`
+		Err     ErrorObject `json:"error"`
+		Id      int         `json:"id"`
+	}
+
+	body := `{"jsonrpc": "2.0", "method": "subtract", "params": [999, 999], "id": 1}`
+	buf := bytes.NewBuffer([]byte(body))
+	resp, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rdr := bufio.NewReader(resp.Body)
+	dec := json.NewDecoder(rdr)
+	dec.Decode(&result)
+
+	if result.Result != nil {
+		t.Fatal("Expected result to be nil")
+	}
+	if result.Err.Code != -32001 {
+		t.Fatal("Expected code to be -32001")
+	}
+	if result.Err.Message != "Server error" {
+		t.Fatal("Expected message to be 'Server error'")
+	}
+	if result.Err.Data != "Mock error" {
+		t.Fatal("Expected data to be 'Mock error'")
+	}
+	if result.Id != 1 {
+		t.Fatal("Expected id to be 1")
 	}
 }
 
