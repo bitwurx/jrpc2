@@ -226,14 +226,14 @@ func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 		}
 
 		wg.Add(1)
-		go func() {
+		go func(req *RequestObject) {
 			if result, err := s.Call(req.Method, req.Params); err != nil {
 				batch.AddResponse(NewResponse(nil, err, req.Id, false))
 			} else if req.Id != nil {
 				batch.AddResponse(NewResponse(result, nil, req.Id, false))
 			}
 			wg.Done()
-		}()
+		}(req)
 	}
 
 	wg.Wait()
