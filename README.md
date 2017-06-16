@@ -1,5 +1,7 @@
 # Golang JSON-RPC 2.0 HTTP Server
 
+[![GoDoc](https://godoc.org/github.com/golang/gddo?status.png)](https://godoc.org/github.com/bitwurx/jrpc2)
+
 This library is an HTTP server implementation of the [JSON-RPC 2.0 Specification](http://www.jsonrpc.org/specification). The library is fully spec compliant with support for named and positional arguments and batch requests.
 
 ### Installation
@@ -71,9 +73,9 @@ func main() {
 
 
 ```
-When defining your own registered methods with the rpc server it is important to consider both named and positional parameters per the specification. 
+When defining your own registered methods with the rpc server it is important to consider both named and positional parameters per the specification.
 
-While named arguments are more straightforward, this library aims to be fully spec compliant, therefore positional parameters must be handled accordingly. 
+While named arguments are more straightforward, this library aims to be fully spec compliant, therefore positional parameters must be handled accordingly.
 
 The ParseParams helper function should be used to ensure positional parameters are automatically resolved by the params struct's FromPositional handler method. The spec states *by-position: params MUST be an Array, containing the values in the Server expected order.*, so handling positional argument by direct subscript reference, where positional arguments are valid, should be considered safe.
 
