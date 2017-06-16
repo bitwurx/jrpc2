@@ -28,6 +28,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // Error codes
@@ -215,6 +216,7 @@ func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 		w.Write(NewResponse(nil, err, nil, true))
 	}
 
+	var wg sync.WaitGroup
 	batch := new(Batch)
 
 	for _, req := range reqs {
@@ -222,14 +224,19 @@ func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 			batch.AddResponse(NewResponse(nil, err, req.Id, false))
 			continue
 		}
-		if result, err := s.Call(req.Method, req.Params); err != nil {
-			batch.AddResponse(NewResponse(nil, err, req.Id, false))
-			continue
-		} else if req.Id != nil {
-			batch.AddResponse(NewResponse(result, nil, req.Id, false))
-		}
+
+		wg.Add(1)
+		go func() {
+			if result, err := s.Call(req.Method, req.Params); err != nil {
+				batch.AddResponse(NewResponse(nil, err, req.Id, false))
+			} else if req.Id != nil {
+				batch.AddResponse(NewResponse(result, nil, req.Id, false))
+			}
+			wg.Done()
+		}()
 	}
 
+	wg.Wait()
 	if len(batch.Responses) > 0 {
 		w.Write(batch.MakeResponse())
 	}
