@@ -17,7 +17,7 @@ package main
 import (
     "encoding/json"
     "errors"
-    "fmt"
+    "os"
 
     "github.com/bitwurx/jrpc2"
 )
@@ -33,7 +33,7 @@ type AddParams struct {
 // are passed in the rpc call
 func (ap *AddParams) FromPositional(params []interface{}) error {
     if len(params) != 2 {
-        return errors.New(fmt.Sprintf("exactly two integers are required"))
+        return errors.New("exactly two integers are required")
     }
 
     x := params[0].(float64)
@@ -66,18 +66,36 @@ func Add(params json.RawMessage) (interface{}, *jrpc2.ErrorObject) {
 }
 
 func main() {
-    s := jrpc2.NewServer(":8888", "/api/v1/rpc") // pass the server host and rpc handler path
-    s.Register("add", Add)                       // register the add method
-    s.Start()                                    // start the rpc server
+    // create a new server instance
+    s := jrpc2.NewServer(":8888", "/api/v1/rpc")
+
+    // register the add method
+    s.Register("add", jrpc2.Method{Method: Add})
+
+    // register the subtract method to proxy another rpc server
+    // s.Register("add", jrpc2.Method{Url: "http://localhost:9999/api/v1/rpc"})
+
+    // start the server instance
+    s.Start()
 }
-
-
 ```
 When defining your own registered methods with the rpc server it is important to consider both named and positional parameters per the specification.
 
 While named arguments are more straightforward, this library aims to be fully spec compliant, therefore positional parameters must be handled accordingly.
 
 The ParseParams helper function should be used to ensure positional parameters are automatically resolved by the params struct's FromPositional handler method. The spec states *by-position: params MUST be an Array, containing the values in the Server expected order.*, so handling positional argument by direct subscript reference, where positional arguments are valid, should be considered safe.
+
+### Proxy Server
+
+The jrpc2 HTTP server is capable of proxying another jrpc2 HTTP server's requests out of the box.  The `jrpc2.register` method allows rpc registration of a method.  Registration requires a method name and a url of the server to proxy.
+
+The following request is an example of method registration:
+
+```{"jsonrpc": "2.0", "method": "jrpc2.register", "params": ["subtract", "http://localhost:8080/api/v1/rpc"]}```
+
+Methods can also be explicitly registered using the server's Register method:
+
+```s.Register("add", jrpc2.Method{Url: "http://localhost:8080/api/v1/rpc"})```
 
 ### Running Tests
 
