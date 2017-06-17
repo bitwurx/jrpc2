@@ -458,7 +458,7 @@ func NewServer(host string, route string) *Server {
 		Methods: make(map[string]Method),
 	}
 
-	s.Methods["register"] = Method{Method: s.RegisterRPC}
+	s.Methods["jrpc2.register"] = Method{Method: s.RegisterRPC}
 
 	return s
 }

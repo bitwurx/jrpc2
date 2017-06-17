@@ -112,7 +112,7 @@ func init() {
 
 	go func() {
 		for {
-			body := `{"jsonrpc": "2.0", "method": "register", "params": ["subtract", "http://localhost:31501/api/v2/rpc"]}`
+			body := `{"jsonrpc": "2.0", "method": "jrpc2.register", "params": ["subtract", "http://localhost:31501/api/v2/rpc"]}`
 			buf := bytes.NewBuffer([]byte(body))
 			_, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
 			if err != nil {
