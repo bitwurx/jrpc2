@@ -242,12 +242,12 @@ func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 
 		wg.Add(1)
 		go func(req *RequestObject) {
+			defer wg.Done()
 			if result, err := s.Call(req.Method, req.Params); err != nil {
 				batch.AddResponse(NewResponse(nil, err, req.Id, false))
 			} else if req.Id != nil {
 				batch.AddResponse(NewResponse(result, nil, req.Id, false))
 			}
-			wg.Done()
 		}(req)
 	}
 
