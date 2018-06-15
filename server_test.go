@@ -97,13 +97,15 @@ func init() {
 	wg.Add(1)
 
 	go func() { // subtract method remote server
-		s := NewServer(":31501", "/api/v2/rpc")
+		s := NewServer(":31501", "/api/v2/rpc", nil)
 		s.Register("subtract", Method{Method: Subtract})
 		s.Start()
 	}()
 
 	go func() { // primary server with subtract remote server proxy
-		s := NewServer(":31500", "/api/v1/rpc")
+		s := NewServer(":31500", "/api/v1/rpc", map[string]string{
+			"X-Test-Header": "some-test-value",
+		})
 		s.Register("sum", Method{Method: Sum})
 		s.Register("update", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
 		s.Register("foobar", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
@@ -125,6 +127,18 @@ func init() {
 	}()
 
 	wg.Wait()
+}
+
+func TestResponseHeaders(t *testing.T) {
+	buf := bytes.NewBuffer([]byte(`{}`))
+	resp, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if v := resp.Header.Get("X-Test-Header"); v != "some-test-value" {
+		t.Fatal("got unexpected X-Test-Header value")
+	}
 }
 
 func TestRpcCallWithPositionalParamters(t *testing.T) {

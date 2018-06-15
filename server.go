@@ -188,14 +188,15 @@ type Server struct {
 	// Host is the host:port of the server.
 	// Route is the path to the rpc api.
 	// Methods contains the mapping of registered methods.
+	// Headers contains response headers.
 	Host    string
 	Route   string
 	Methods map[string]Method
+	Headers map[string]string
 }
 
 // rpcHandler handles incoming rpc client requests.
 func (s *Server) rpcHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	if err := s.ParseRequest(w, r); err != nil {
 		w.Write(NewResponse(nil, err, nil, true))
 		return
@@ -205,6 +206,9 @@ func (s *Server) rpcHandler(w http.ResponseWriter, r *http.Request) {
 // HandleRequest validates, calls, and returns the result of a single rpc client request.
 func (s *Server) HandleRequest(w http.ResponseWriter, req *RequestObject) {
 	w.Header().Set("Content-Type", "application/json")
+	for header, value := range s.Headers {
+		w.Header().Set(header, value)
+	}
 	if err := s.ValidateRequest(req); err != nil {
 		w.Write(NewResponse(nil, err, req.Id, true))
 		return
@@ -390,7 +394,7 @@ func (s *Server) ValidateRequest(req *RequestObject) *ErrorObject {
 // If a method from the server Methods has a Method member will be called locally.
 // If a method from the server Methods has a Url member it will be called by proxy.
 func (s *Server) Call(name interface{}, params json.RawMessage) (interface{}, *ErrorObject) {
-	method, ok := s.Methods[name.(string)];
+	method, ok := s.Methods[name.(string)]
 	if !ok {
 		return nil, &ErrorObject{
 			Code:    MethodNotFoundCode,
@@ -451,11 +455,12 @@ func (s *Server) Start() {
 }
 
 // NewServer creates a new server instance
-func NewServer(host string, route string) *Server {
+func NewServer(host, route string, headers map[string]string) *Server {
 	s := &Server{
 		Host:    host,
 		Route:   route,
 		Methods: make(map[string]Method),
+		Headers: headers,
 	}
 
 	s.Methods["jrpc2.register"] = Method{Method: s.RegisterRPC}
