@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"testing"
@@ -19,7 +19,7 @@ type SumParams struct {
 
 func (ap *SumParams) FromPositional(params []interface{}) error {
 	if len(params) != 2 {
-		return errors.New(fmt.Sprintf("exactly two integers are required"))
+		return fmt.Errorf("exactly two integers are required")
 	}
 
 	x := params[0].(float64)
@@ -55,7 +55,7 @@ type SubtractParams struct {
 
 func (ap *SubtractParams) FromPositional(params []interface{}) error {
 	if len(params) != 2 {
-		return errors.New(fmt.Sprintf("exactly two integers are required"))
+		return fmt.Errorf("exactly two integers are required")
 	}
 
 	x := params[0].(float64)
@@ -92,6 +92,7 @@ func Subtract(params json.RawMessage) (interface{}, *ErrorObject) {
 	return *p.X - *p.Y, nil
 }
 
+// nolint: gochecknoinits
 func init() {
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -135,7 +136,12 @@ func TestResponseHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if v := resp.Header.Get("X-Test-Header"); v != "some-test-value" {
 		t.Fatal("got unexpected X-Test-Header value")
 	}
@@ -146,7 +152,7 @@ func TestRpcCallWithPositionalParamters(t *testing.T) {
 		Body    string
 		Jsonrpc string `json:"jsonrpc"`
 		Result  int    `json:"result"`
-		Id      int    `json:"id"`
+		ID      int    `json:"id"`
 	}{
 		{`{"jsonrpc": "2.0", "method": "subtract", "params": [42, 23], "id": 1}`, "2.0", 19, 1},
 		{`{"jsonrpc": "2.0", "method": "subtract", "params": [23, 42], "id": 2}`, "2.0", -19, 2},
@@ -157,7 +163,7 @@ func TestRpcCallWithPositionalParamters(t *testing.T) {
 			Jsonrpc string      `json:"jsonrpc"`
 			Result  int         `json:"result"`
 			Error   interface{} `json:"error"`
-			Id      int         `json:"id"`
+			ID      int         `json:"id"`
 		}
 
 		buf := bytes.NewBuffer([]byte(tc.Body))
@@ -167,7 +173,10 @@ func TestRpcCallWithPositionalParamters(t *testing.T) {
 		}
 		rdr := bufio.NewReader(resp.Body)
 		dec := json.NewDecoder(rdr)
-		dec.Decode(&result)
+		err = dec.Decode(&result)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if result.Error != nil {
 			t.Fatal("Expected error to be nil")
@@ -178,8 +187,8 @@ func TestRpcCallWithPositionalParamters(t *testing.T) {
 		if result.Result != tc.Result {
 			t.Fatalf("Expected result to be %d", tc.Result)
 		}
-		if result.Id != tc.Id {
-			t.Fatalf("Expected id to be %d", tc.Id)
+		if result.ID != tc.ID {
+			t.Fatalf("Expected id to be %d", tc.ID)
 		}
 	}
 }
@@ -189,7 +198,7 @@ func TestRpcCallWithPositionalParamtersError(t *testing.T) {
 		Jsonrpc string      `json:"jsonrpc"`
 		Result  interface{} `json:"result"`
 		Err     ErrorObject `json:"error"`
-		Id      int         `json:"id"`
+		ID      int         `json:"id"`
 	}
 
 	body := `{"jsonrpc": "2.0", "method": "subtract", "params": [999, 999], "id": 1}`
@@ -200,7 +209,10 @@ func TestRpcCallWithPositionalParamtersError(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	err = dec.Decode(&result)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("Expected result to be nil")
@@ -214,7 +226,7 @@ func TestRpcCallWithPositionalParamtersError(t *testing.T) {
 	if result.Err.Data != "Mock error" {
 		t.Fatal("Expected data to be 'Mock error'")
 	}
-	if result.Id != 1 {
+	if result.ID != 1 {
 		t.Fatal("Expected id to be 1")
 	}
 }
@@ -224,7 +236,7 @@ func TestRpcCallWithNamedParameters(t *testing.T) {
 		Body    string
 		Jsonrpc string `json:"jsonrpc"`
 		Result  int    `json:"result"`
-		Id      int    `json:"id"`
+		ID      int    `json:"id"`
 	}{
 		{`{"jsonrpc": "2.0", "method": "subtract", "params": {"subtrahend": 23, "minuend": 42}, "id": 3}`, "2.0", 19, 3},
 		{`{"jsonrpc": "2.0", "method": "subtract", "params": {"minuend": 42, "subtrahend": 23}, "id": 4}`, "2.0", 19, 4},
@@ -235,7 +247,7 @@ func TestRpcCallWithNamedParameters(t *testing.T) {
 			Jsonrpc string      `json:"jsonrpc"`
 			Result  int         `json:"result"`
 			Error   interface{} `json:"error"`
-			Id      int         `json:"id"`
+			ID      int         `json:"id"`
 		}
 
 		buf := bytes.NewBuffer([]byte(tc.Body))
@@ -245,7 +257,10 @@ func TestRpcCallWithNamedParameters(t *testing.T) {
 		}
 		rdr := bufio.NewReader(resp.Body)
 		dec := json.NewDecoder(rdr)
-		dec.Decode(&result)
+		err = dec.Decode(&result)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if result.Error != nil {
 			t.Fatal("Expected error to be nil")
@@ -256,8 +271,8 @@ func TestRpcCallWithNamedParameters(t *testing.T) {
 		if result.Result != tc.Result {
 			t.Fatalf("Expected result to be %d", tc.Result)
 		}
-		if result.Id != tc.Id {
-			t.Fatalf("Expected id to be %d", tc.Id)
+		if result.ID != tc.ID {
+			t.Fatalf("Expected id to be %d", tc.ID)
 		}
 	}
 }
@@ -276,6 +291,9 @@ func TestNotification(t *testing.T) {
 		}
 		rdr := bufio.NewReader(resp.Body)
 		data, err := rdr.ReadBytes('\b')
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
 
 		if len(data) > 0 {
 			t.Fatal("Expected notification to return no response body")
@@ -288,7 +306,7 @@ func TestCallOfNotExistentMethod(t *testing.T) {
 		Jsonrpc string      `json:"jsonrpc"`
 		Err     ErrorObject `json:"error"`
 		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
+		ID      int         `json:"id"`
 	}
 
 	body := `{"jsonrpc": "2.0", "method": "fooba", "id": "1"}`
@@ -299,7 +317,7 @@ func TestCallOfNotExistentMethod(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	_ = dec.Decode(&result)
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -317,7 +335,7 @@ func TestCallWithInvalidJSON(t *testing.T) {
 		Jsonrpc string      `json:"jsonrpc"`
 		Err     ErrorObject `json:"error"`
 		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
+		ID      int         `json:"id"`
 	}
 
 	body := `{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]`
@@ -328,7 +346,10 @@ func TestCallWithInvalidJSON(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	err = dec.Decode(&result)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -346,7 +367,7 @@ func TestCallWithInvalidRequestObject(t *testing.T) {
 		Jsonrpc string      `json:"jsonrpc"`
 		Err     ErrorObject `json:"error"`
 		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
+		ID      int         `json:"id"`
 	}
 
 	body := `{"jsonrpc": "2.0", "method": 1, "params": "bar"}`
@@ -357,7 +378,10 @@ func TestCallWithInvalidRequestObject(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	err = dec.Decode(&result)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -375,7 +399,7 @@ func TestBatchCallWithInvalidJSON(t *testing.T) {
 		Jsonrpc string      `json:"jsonrpc"`
 		Err     ErrorObject `json:"error"`
 		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
+		ID      int         `json:"id"`
 	}
 
 	body := `[
@@ -389,7 +413,10 @@ func TestBatchCallWithInvalidJSON(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	err = dec.Decode(&result)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -407,7 +434,7 @@ func TestBatchCallWithAnEmptyArray(t *testing.T) {
 		Jsonrpc string      `json:"jsonrpc"`
 		Err     ErrorObject `json:"error"`
 		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
+		ID      int         `json:"id"`
 	}
 
 	body := `[]`
@@ -418,7 +445,10 @@ func TestBatchCallWithAnEmptyArray(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	err = dec.Decode(&result)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -436,7 +466,7 @@ func TestCallWithAnInvalidBatch(t *testing.T) {
 		Jsonrpc string      `json:"jsonrpc"`
 		Err     ErrorObject `json:"error"`
 		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
+		ID      int         `json:"id"`
 	}
 
 	body := `[]`
@@ -447,7 +477,7 @@ func TestCallWithAnInvalidBatch(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&results)
+	_ = dec.Decode(&results)
 
 	for _, result := range results {
 		if result.Result != nil {
@@ -466,7 +496,7 @@ func TestCallBatchWithNotifications(t *testing.T) {
 	body := `[
         {"jsonrpc": "2.0", "method": "sum", "params": [1,2]},
         {"jsonrpc": "2.0", "method": "subtract", "params": [7,2]}
-    ]`
+	]`
 	buf := bytes.NewBuffer([]byte(body))
 	resp, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
 	if err != nil {
@@ -474,6 +504,10 @@ func TestCallBatchWithNotifications(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	data, err := rdr.ReadBytes('\n')
+	if err != nil && err != io.EOF {
+		t.Fatal(err)
+	}
+
 	if len(data) > 0 {
 		t.Fatal("Expected batch notification to return no response body")
 	}
