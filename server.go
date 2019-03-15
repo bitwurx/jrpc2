@@ -56,7 +56,10 @@ const (
 	URLSchemeErrorMsg ErrorMsg = "URL scheme error"
 )
 
+// ErrorCode is a json rpc 2.0 error code.
 type ErrorCode int
+
+// ErrorMsg is a json rpc 2.0 error message.
 type ErrorMsg string
 
 // ErrorObject represents a response error object.
@@ -466,4 +469,49 @@ func NewServer(host, route string, headers map[string]string) *Server {
 	s.Methods["jrpc2.register"] = Method{Method: s.RegisterRPC}
 
 	return s
+}
+
+// MuxHandler is a method dispatcher that handles request at a
+// designated route.
+type MuxHandler struct {
+	Methods map[string]Method
+}
+
+// Register adds the method to the handler methods.
+func (h *MuxHandler) Register(name string, method Method) {
+	h.Methods[name] = method
+}
+
+// NewMuxHandler creates a new mux handler instance.
+func NewMuxHandler() *MuxHandler {
+	return &MuxHandler{make(map[string]Method)}
+}
+
+// MuxServer is a json rpc 2 server that handles multiple requests.
+type MuxServer struct {
+	Host     string
+	Headers  map[string]string
+	Handlers map[string]*MuxHandler
+}
+
+// Start Starts binds all server rpcHandlers to their handler routes and
+// starts the http server.
+func (s *MuxServer) Start() {
+	for route, handler := range s.Handlers {
+		s := &Server{Methods: handler.Methods, Headers: s.Headers}
+		http.HandleFunc(route, s.rpcHandler)
+		log.Println(fmt.Sprintf("adding handler at %s", route))
+	}
+	log.Println(fmt.Sprintf("Starting server on %s", s.Host))
+	log.Fatal(http.ListenAndServe(s.Host, nil))
+}
+
+// AddHandler add the handler to the mux handlers.
+func (s *MuxServer) AddHandler(route string, handler *MuxHandler) {
+	s.Handlers[route] = handler
+}
+
+// NewMuxServer creates a new mux handler instance.
+func NewMuxServer(host string, headers map[string]string) *MuxServer {
+	return &MuxServer{host, headers, make(map[string]*MuxHandler)}
 }
