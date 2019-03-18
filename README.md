@@ -85,7 +85,7 @@ While named arguments are more straightforward, this library aims to be fully sp
 
 The ParseParams helper function should be used to ensure positional parameters are automatically resolved by the params struct's FromPositional handler method. The spec states *by-position: params MUST be an Array, containing the values in the Server expected order.*, so handling positional argument by direct subscript reference, where positional arguments are valid, should be considered safe.
 
-### Multipling Server
+### Multiplexing Server
 
 The jrpc2 Server only support a single method handler.  This may not be suitable for versioned rpc APIs or any other implementation that requires more than a single rpc route.  The multiplexing server was added to support this use case.
 
