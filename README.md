@@ -67,7 +67,7 @@ func Add(params json.RawMessage) (interface{}, *jrpc2.ErrorObject) {
 
 func main() {
     // create a new server instance
-    s := jrpc2.NewServer(":8888", "/api/v1/rpc")
+    s := jrpc2.NewServer(":8888", "/api/v1/rpc", nil)
 
     // register the add method
     s.Register("add", jrpc2.Method{Method: Add})
