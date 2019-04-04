@@ -522,6 +522,9 @@ func TestCallWithContext(t *testing.T) {
         {"jsonrpc": "2.0", "method": "say", "params": ["Hello"], "id": 1}
 	`
 	req, err := http.NewRequest("POST", "http://localhost:31500/api/v1/rpc", bytes.NewBuffer([]byte(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.Header.Set("user", "bob")
 	req.Header.Set("content-type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
