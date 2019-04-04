@@ -541,5 +541,8 @@ func TestCallWithContext(t *testing.T) {
 		fmt.Println(*result.Error)
 		t.Fatal("Expected error to be nil")
 	}
-	fmt.Println(result.Result)
+	if result.Result != "Hello bob!" {
+		fmt.Println(result.Result)
+		t.Fatal("Wrong result")
+	}
 }
