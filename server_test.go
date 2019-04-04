@@ -535,7 +535,7 @@ func TestCallWithContext(t *testing.T) {
 		Jsonrpc string       `json:"jsonrpc"`
 		Error   *ErrorObject `json:"error"`
 		Result  interface{}  `json:"result"`
-		Id      int          `json:"id"`
+		Id      interface{}  `json:"id"`
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
