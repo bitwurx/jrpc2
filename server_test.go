@@ -3,6 +3,7 @@ package jrpc2
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -92,6 +93,35 @@ func Subtract(params json.RawMessage) (interface{}, *ErrorObject) {
 	return *p.X - *p.Y, nil
 }
 
+type SayParams struct {
+	Message string `json:"message"`
+}
+
+func (sp *SayParams) FromPositional(params []interface{}) error {
+	if len(params) != 1 {
+		return fmt.Errorf("exactly one argument is required")
+	}
+	sp.Message = params[0].(string)
+	return nil
+}
+
+func Say(ctx context.Context, params json.RawMessage) (interface{}, *ErrorObject) {
+	ruser := ctx.Value("user")
+	var user string
+	if ruser == nil {
+		user = ""
+	} else {
+		user = ruser.(string)
+	}
+	p := new(SayParams)
+
+	if err := ParseParams(params, p); err != nil {
+		return nil, err
+	}
+
+	return fmt.Sprintf("%s %s!", p.Message, user), nil
+}
+
 func init() {
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -109,9 +139,15 @@ func init() {
 			"X-Test-Header": "some-test-value",
 		})
 		s.Register("sum", Method{Method: Sum})
+		s.RegisterWithContext("say", MethodWithContext{Method: Say})
 		s.Register("update", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
 		s.Register("foobar", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
-		s.Start()
+		s.StartWithMiddleware(func(next http.HandlerFunc) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				req := r.WithContext(context.WithValue(r.Context(), "user", r.Header.Get("user")))
+				next(w, req)
+			}
+		})
 	}()
 
 	go func() {
@@ -478,5 +514,38 @@ func TestCallBatchWithNotifications(t *testing.T) {
 	data, err := rdr.ReadBytes('\n')
 	if len(data) > 0 {
 		t.Fatal("Expected batch notification to return no response body")
+	}
+}
+
+func TestCallWithContext(t *testing.T) {
+	body := `
+        {"jsonrpc": "2.0", "method": "say", "params": ["Hello"], "id": 1}
+	`
+	req, err := http.NewRequest("POST", "http://localhost:31500/api/v1/rpc", bytes.NewBuffer([]byte(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("user", "bob")
+	req.Header.Set("content-type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Jsonrpc string       `json:"jsonrpc"`
+		Error   *ErrorObject `json:"error"`
+		Result  interface{}  `json:"result"`
+		Id      interface{}  `json:"id"`
+	}
+	rdr := bufio.NewReader(resp.Body)
+	dec := json.NewDecoder(rdr)
+	dec.Decode(&result)
+	if result.Error != nil {
+		fmt.Println(*result.Error)
+		t.Fatal("Expected error to be nil")
+	}
+	if result.Result != "Hello bob!" {
+		fmt.Println(result.Result)
+		t.Fatal("Wrong result")
 	}
 }

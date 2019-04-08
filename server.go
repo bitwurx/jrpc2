@@ -23,6 +23,7 @@ package jrpc2
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -85,6 +86,7 @@ type RequestObject struct {
 	Method  interface{}     `json:"method"`
 	Params  json.RawMessage `json:"params"`
 	Id      interface{}     `json:"id"`
+	ctx     context.Context
 }
 
 // ResponseObject represents a response object.
@@ -186,6 +188,14 @@ type Method struct {
 	Method func(params json.RawMessage) (interface{}, *ErrorObject)
 }
 
+// MethodWithContext represents an rpc method with a context.
+type MethodWithContext struct {
+	// Url is the url of the server that handles the method.
+	// Method is the callable function
+	Url    string
+	Method func(ctx context.Context, params json.RawMessage) (interface{}, *ErrorObject)
+}
+
 // Server represents a jsonrpc 2.0 capable web server.
 type Server struct {
 	// Host is the host:port of the server.
@@ -194,7 +204,7 @@ type Server struct {
 	// Headers contains response headers.
 	Host    string
 	Route   string
-	Methods map[string]Method
+	Methods map[string]MethodWithContext
 	Headers map[string]string
 }
 
@@ -217,7 +227,7 @@ func (s *Server) HandleRequest(w http.ResponseWriter, req *RequestObject) {
 		return
 	}
 
-	if result, err := s.Call(req.Method, req.Params); err != nil {
+	if result, err := s.Call(req.ctx, req.Method, req.Params); err != nil {
 		w.Write(NewResponse(nil, err, req.Id, true))
 		return
 	} else if req.Id != nil {
@@ -250,7 +260,7 @@ func (s *Server) HandleBatch(w http.ResponseWriter, reqs []*RequestObject) {
 		wg.Add(1)
 		go func(req *RequestObject) {
 			defer wg.Done()
-			if result, err := s.Call(req.Method, req.Params); err != nil {
+			if result, err := s.Call(req.ctx, req.Method, req.Params); err != nil {
 				batch.AddResponse(NewResponse(nil, err, req.Id, false))
 			} else if req.Id != nil {
 				batch.AddResponse(NewResponse(result, nil, req.Id, false))
@@ -289,7 +299,7 @@ func (rp *RegisterRPCParams) FromPositional(params []interface{}) error {
 
 // RegisterRPC accepts a method name and server url to register a proxy rpc method.
 // A method name can be only be registered once.
-func (s *Server) RegisterRPC(params json.RawMessage) (interface{}, *ErrorObject) {
+func (s *Server) RegisterRPC(ctx context.Context, params json.RawMessage) (interface{}, *ErrorObject) {
 	p := new(RegisterRPCParams)
 
 	if err := ParseParams(params, p); err != nil {
@@ -311,13 +321,22 @@ func (s *Server) RegisterRPC(params json.RawMessage) (interface{}, *ErrorObject)
 		}
 	}
 
-	s.Methods[*p.Name] = Method{Url: *p.Url}
+	s.Methods[*p.Name] = MethodWithContext{Url: *p.Url}
 
 	return "success", nil
 }
 
 // Register maps the provided method to the given name for later method calls.
 func (s *Server) Register(name string, method Method) {
+	s.Methods[name] = MethodWithContext{
+		Url: method.Url,
+		Method: func(ctx context.Context, params json.RawMessage) (interface{}, *ErrorObject) {
+			return method.Method(params)
+		},
+	}
+}
+
+func (s *Server) RegisterWithContext(name string, method MethodWithContext) {
 	s.Methods[name] = method
 }
 
@@ -343,6 +362,7 @@ func (s *Server) ParseRequest(w http.ResponseWriter, r *http.Request) *ErrorObje
 			Data:    err.Error(),
 		}
 	} else {
+		req.ctx = r.Context()
 		s.HandleRequest(w, req)
 	}
 
@@ -396,7 +416,7 @@ func (s *Server) ValidateRequest(req *RequestObject) *ErrorObject {
 // Call invokes the named method with the provided parameters.
 // If a method from the server Methods has a Method member will be called locally.
 // If a method from the server Methods has a Url member it will be called by proxy.
-func (s *Server) Call(name interface{}, params json.RawMessage) (interface{}, *ErrorObject) {
+func (s *Server) Call(ctx context.Context, name interface{}, params json.RawMessage) (interface{}, *ErrorObject) {
 	method, ok := s.Methods[name.(string)]
 	if !ok {
 		return nil, &ErrorObject{
@@ -405,7 +425,7 @@ func (s *Server) Call(name interface{}, params json.RawMessage) (interface{}, *E
 		}
 	}
 	if method.Method != nil {
-		return method.Method(params)
+		return method.Method(ctx, params)
 	}
 	if method.Url != "" {
 		req := &RequestObject{
@@ -453,8 +473,18 @@ func (s *Server) Call(name interface{}, params json.RawMessage) (interface{}, *E
 // Start binds the rpcHandler to the server route and starts the http server
 func (s *Server) Start() {
 	http.HandleFunc(s.Route, s.rpcHandler)
+	s.start()
+}
+
+func (s *Server) start() {
 	log.Println(fmt.Sprintf("Starting server on %s at %s", s.Host, s.Route))
 	log.Fatal(http.ListenAndServe(s.Host, nil))
+}
+
+// StartWithMiddleware binds the rpcHandler, with its middleware to the server route and starts the http server
+func (s *Server) StartWithMiddleware(m func(next http.HandlerFunc) http.HandlerFunc) {
+	http.HandleFunc(s.Route, m(s.rpcHandler))
+	s.start()
 }
 
 // NewServer creates a new server instance
@@ -462,11 +492,11 @@ func NewServer(host, route string, headers map[string]string) *Server {
 	s := &Server{
 		Host:    host,
 		Route:   route,
-		Methods: make(map[string]Method),
+		Methods: make(map[string]MethodWithContext),
 		Headers: headers,
 	}
 
-	s.Methods["jrpc2.register"] = Method{Method: s.RegisterRPC}
+	s.Methods["jrpc2.register"] = MethodWithContext{Method: s.RegisterRPC}
 
 	return s
 }
@@ -474,17 +504,27 @@ func NewServer(host, route string, headers map[string]string) *Server {
 // MuxHandler is a method dispatcher that handles request at a
 // designated route.
 type MuxHandler struct {
-	Methods map[string]Method
+	Methods map[string]MethodWithContext
 }
 
 // Register adds the method to the handler methods.
 func (h *MuxHandler) Register(name string, method Method) {
+	h.Methods[name] = MethodWithContext{
+		Url: method.Url,
+		Method: func(ctx context.Context, params json.RawMessage) (interface{}, *ErrorObject) {
+			return method.Method(params)
+		},
+	}
+}
+
+// RegisterWithContext adds the method to the handler methods.
+func (h *MuxHandler) RegisterWithContext(name string, method MethodWithContext) {
 	h.Methods[name] = method
 }
 
 // NewMuxHandler creates a new mux handler instance.
 func NewMuxHandler() *MuxHandler {
-	return &MuxHandler{make(map[string]Method)}
+	return &MuxHandler{make(map[string]MethodWithContext)}
 }
 
 // MuxServer is a json rpc 2 server that handles multiple requests.
@@ -498,7 +538,10 @@ type MuxServer struct {
 // starts the http server.
 func (s *MuxServer) Start() {
 	for route, handler := range s.Handlers {
-		s := &Server{Methods: handler.Methods, Headers: s.Headers}
+		s := &Server{
+			Methods: handler.Methods,
+			Headers: s.Headers,
+		}
 		http.HandleFunc(route, s.rpcHandler)
 		log.Println(fmt.Sprintf("adding handler at %s", route))
 	}
