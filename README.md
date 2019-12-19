@@ -147,7 +147,7 @@ func main() {
 }
 ```
 
-The mux server api is designed to mimic the single server api as closely as possible.  They key difference is the addition of the mux handler which handles method registration.  Once methods are registered to the handler, the handler is added to the mux server.  The mux server can then be started with the `Start()` method exactly like the single server.
+The mux server api is designed to mimic the single server api as closely as possible.  The key difference is the addition of the mux handler which handles method registration.  Once methods are registered to the handler, the handler is added to the mux server.  The mux server can then be started with the `Start()` method exactly like the single server.
 
 Each registered handler isolates all registered methods so duplicating method names between handlers is fully supported.
 
