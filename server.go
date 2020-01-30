@@ -482,14 +482,14 @@ func (s *Server) start() {
 }
 
 // Start binds the rpcHandler to the server route and starts the https server.
-func (s *Server) StartTLS(cert, key string) {
+func (s *Server) StartTLS(certFile, keyFile string) {
 	http.HandleFunc(s.Route, s.rpcHandler)
-	s.startTLS(cert, key)
+	s.startTLS(certFile, keyFile)
 }
 
-func (s *Server) startTLS(cert, key string) {
+func (s *Server) startTLS(certFile, keyFile string) {
 	log.Println(fmt.Sprintf("Starting server on %s at %s", s.Host, s.Route))
-	log.Fatal(http.ListenAndServeTLS(s.Host, cert, key, nil))
+	log.Fatal(http.ListenAndServeTLS(s.Host, certFile, keyFile, nil))
 }
 
 // StartWithMiddleware binds the rpcHandler, with its middleware to the server
@@ -501,7 +501,7 @@ func (s *Server) StartWithMiddleware(m func(next http.HandlerFunc) http.HandlerF
 
 // StartWithMiddleware binds the rpcHandler, with its middleware to the server
 // route and starts the https server.
-func (s *Server) StartTLSWithMiddleware(cert, key string, m func(next http.HandlerFunc) http.HandlerFunc) {
+func (s *Server) StartTLSWithMiddleware(certFile, keyFile string, m func(next http.HandlerFunc) http.HandlerFunc) {
 	http.HandleFunc(s.Route, m(s.rpcHandler))
 	s.start()
 }
@@ -570,7 +570,7 @@ func (s *MuxServer) Start() {
 
 // Start Starts binds all server rpcHandlers to their handler routes and
 // starts the https server.
-func (s *MuxServer) StartTLS(cert, key string) {
+func (s *MuxServer) StartTLS(certFile, keyFile string) {
 	for route, handler := range s.Handlers {
 		s := &Server{
 			Methods: handler.Methods,
@@ -580,7 +580,7 @@ func (s *MuxServer) StartTLS(cert, key string) {
 		log.Println(fmt.Sprintf("adding handler at %s", route))
 	}
 	log.Println(fmt.Sprintf("Starting server on %s", s.Host))
-	log.Fatal(http.ListenAndServeTLS(s.Host, cert, key, nil))
+	log.Fatal(http.ListenAndServeTLS(s.Host, certFile, keyFile, nil))
 }
 
 // AddHandler add the handler to the mux handlers.
