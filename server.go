@@ -470,7 +470,7 @@ func (s *Server) Call(ctx context.Context, name interface{}, params json.RawMess
 	}
 }
 
-// Start binds the rpcHandler to the server route and starts the http server
+// Start binds the rpcHandler to the server route and starts the http server.
 func (s *Server) Start() {
 	http.HandleFunc(s.Route, s.rpcHandler)
 	s.start()
@@ -481,13 +481,32 @@ func (s *Server) start() {
 	log.Fatal(http.ListenAndServe(s.Host, nil))
 }
 
-// StartWithMiddleware binds the rpcHandler, with its middleware to the server route and starts the http server
+// Start binds the rpcHandler to the server route and starts the https server.
+func (s *Server) StartTLS(cert, key string) {
+	http.HandleFunc(s.Route, s.rpcHandler)
+	s.startTLS(cert, key)
+}
+
+func (s *Server) startTLS(cert, key string) {
+	log.Println(fmt.Sprintf("Starting server on %s at %s", s.Host, s.Route))
+	log.Fatal(http.ListenAndServeTLS(s.Host, cert, key, nil))
+}
+
+// StartWithMiddleware binds the rpcHandler, with its middleware to the server
+// route and starts the http server.
 func (s *Server) StartWithMiddleware(m func(next http.HandlerFunc) http.HandlerFunc) {
 	http.HandleFunc(s.Route, m(s.rpcHandler))
 	s.start()
 }
 
-// NewServer creates a new server instance
+// StartWithMiddleware binds the rpcHandler, with its middleware to the server
+// route and starts the https server.
+func (s *Server) StartTLSWithMiddleware(cert, key string, m func(next http.HandlerFunc) http.HandlerFunc) {
+	http.HandleFunc(s.Route, m(s.rpcHandler))
+	s.start()
+}
+
+// NewServer creates a new server instance.
 func NewServer(host, route string, headers map[string]string) *Server {
 	s := &Server{
 		Host:    host,
@@ -547,6 +566,21 @@ func (s *MuxServer) Start() {
 	}
 	log.Println(fmt.Sprintf("Starting server on %s", s.Host))
 	log.Fatal(http.ListenAndServe(s.Host, nil))
+}
+
+// Start Starts binds all server rpcHandlers to their handler routes and
+// starts the https server.
+func (s *MuxServer) StartTLS(cert, key string) {
+	for route, handler := range s.Handlers {
+		s := &Server{
+			Methods: handler.Methods,
+			Headers: s.Headers,
+		}
+		http.HandleFunc(route, s.rpcHandler)
+		log.Println(fmt.Sprintf("adding handler at %s", route))
+	}
+	log.Println(fmt.Sprintf("Starting server on %s", s.Host))
+	log.Fatal(http.ListenAndServeTLS(s.Host, cert, key, nil))
 }
 
 // AddHandler add the handler to the mux handlers.

@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -122,9 +125,84 @@ func Say(ctx context.Context, params json.RawMessage) (interface{}, *ErrorObject
 	return fmt.Sprintf("%s %s!", p.Message, user), nil
 }
 
+func newTLSCert() (string, string) {
+	tlsCert := []byte(`-----BEGIN CERTIFICATE-----
+MIIDBzCCAe+gAwIBAgIUVnylqJoVhV2TkZyMnoG5d1WntGcwDQYJKoZIhvcNAQEL
+BQAwEzERMA8GA1UEAwwIdGVzdC5jb20wHhcNMjAwMTMwMTkwMTA0WhcNMjEwMTI5
+MTkwMTA0WjATMREwDwYDVQQDDAh0ZXN0LmNvbTCCASIwDQYJKoZIhvcNAQEBBQAD
+ggEPADCCAQoCggEBAMGrFhH2esQ6kpRzZaWcB8Gv+P3oD+VGP6rnAGhItNdI//sg
+DvPJY9Icl3KJCfLBNeFlZ2b9bnJqX1Q04+ZOPniJBvAEaOFmMRZShV/61BUpdH7o
+BVMCPfcOvtj/u3Q/rSNOwtoipzkARwgOogak20MIy5s5z44NYHgALDjU7DNxsiep
+VprFXEVvYFlZbwyAAn9FeK1q0WbSH7yNe0STgDgoB5o5C/NCWzT/lE+GXFnwRphC
+OLCn3tpdHpO1TruUEDd6ejIOfbq4o2Rar1WA3X8wUkKKrRRWoKYWNsGz2NKlP+Dr
+l/u+5s4z0tWUmwQ0IYEng4lehV0AM2AEQ33t5fsCAwEAAaNTMFEwHQYDVR0OBBYE
+FD7rpYF1pvkAl2ZiUq7rl2Ek0+hXMB8GA1UdIwQYMBaAFD7rpYF1pvkAl2ZiUq7r
+l2Ek0+hXMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAIPqxd88
+Hq+crhH1HlJCphlLXgKDLRaqYYxmhr7c8BCmJC23KLilAEsSC/CCUMi+ZPgoLDhs
+n2qTYTu0FNWR0OaHfH9JIuC5c+/L/ppFyiQOtU4t1uU12/xcVbKDeGt48zoyxkDG
+gY662VrkNbqF5SA45OVhFoVwxeRnxoSuTTAM38Ai4PjvTEg5VLeV53j17Vxq/es6
+UgGKCPWbWOxtbOY1ZgQqCXJnfn6GogGEs+l1Ww6IwmtnhtUQtGs96cGdKw9Vtbrp
+GiDcGN2r88C+o32l3F4Gco9X5iVCQz4RkO1gOaj1IZ2136g3Ko3e/YGx3R7j+4ze
+b3PnPxfPhlb8D6k=
+-----END CERTIFICATE-----`)
+	tlsCertFile, err := ioutil.TempFile("", "tls")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if _, err := tlsCertFile.Write(tlsCert); err != nil {
+		log.Fatal(err)
+	}
+	if err := tlsCertFile.Close(); err != nil {
+		log.Fatal(err)
+	}
+	tlsKey := []byte(`-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBqxYR9nrEOpKU
+c2WlnAfBr/j96A/lRj+q5wBoSLTXSP/7IA7zyWPSHJdyiQnywTXhZWdm/W5yal9U
+NOPmTj54iQbwBGjhZjEWUoVf+tQVKXR+6AVTAj33Dr7Y/7t0P60jTsLaIqc5AEcI
+DqIGpNtDCMubOc+ODWB4ACw41OwzcbInqVaaxVxFb2BZWW8MgAJ/RXitatFm0h+8
+jXtEk4A4KAeaOQvzQls0/5RPhlxZ8EaYQjiwp97aXR6TtU67lBA3enoyDn26uKNk
+Wq9VgN1/MFJCiq0UVqCmFjbBs9jSpT/g65f7vubOM9LVlJsENCGBJ4OJXoVdADNg
+BEN97eX7AgMBAAECggEADsK+bOIPW1Nnhp8A+U1aHf4OiTOduojPI3R1yHz6I4px
+0C8SVKxdyk7ZkCY3tuPY+nPjHKtmNpw65c0eLZh7FG7FM5fycnN6fEwP1E/myDIf
+qeh/N2NtW54pF5ruK58K0C0ZlsybWDHYOBn9aWo5N/O8qPkQA7CrUJoaxL4dvpHi
+qh6o/sZ/SA9YdjRB5mmF2U8Fx/A7blhtN62XskBttX4RZTW1szgZnN5QzcakCQUw
+rCrzwEzvNT3WWJdcZ4skt7QMqGkfkE3u00UVKr/o5WVKoJSWWcVHmIR7ioKegRKa
+CVJpCEE7dGI461A8degduZwjbL2VXOwBNWYT26TvIQKBgQD5677EQnpt7E/so4gj
+lvZW2/XLNWN7FuR7vh9ecKy1sVC4AobtZdOIlI54vOsuO+OqqKQ13nLPGF8DZRSx
+QFo5Wiz86y71Mbk54YSxVoJt27oc8Zn+86vzZM6xuB2/8a6KpGTP10xC6UXTnRYx
+fexhLteGsfZaLrdu4qMh97/3KwKBgQDGYQ6LTRg9mvLWL9x2UnXSphXckh1oUrQB
+XkeajhdG3cZNHkaziyMH4N5KJ8aZgZFQec9RofHYWJ4iO5vmd9C1qViKhv/s6hfn
+Uo/bqpRC+6fRfDyJGxlpdcGzHNk8TyYB3GhSBoDnJ9RA2JhBIZfgNr8MHtnJkpBo
+/FBo7m9kcQKBgHE3i8cq+n17lUV1W8ILrHLy2GmDORrU5xLrsRg+YO86cX+6nVdE
+TszLx7MIml3qgZuZJDLHICmTN8+45ePabEUZBdJZ1H79VJTVBiC0OQf9h1V/Waz2
+xEnRvBUkfE2s9c4W5RiGxyR0us4/loM7MW9hIgAB9MEr8qtH/nDv5EXbAoGBALlv
+jlXeifNEPQzEDnO4HxT6VWMqXjzfWg4RYCN0AQQoWK5Lx9EbFXLO21s8FSP2/qvY
+QVhQZi5Sn/bl+5QSmdDF7NMI4IBITnHYNksjB5YZgUSLulZ7M2TmQ1s3c0Uxwxho
+PEe4dpQdIgY/sQro6PwYkLs2t2P6Ee1hNZTwlMWxAoGAGecr2LApI2beTma0kd5t
+WzoVUIF/vTrILivPZT7/TbLgxCKPKIu6T4GnlflJFTL1VgLU47fXOWmAQhG/Vgmq
+NzcjvvSNVQBUflIgNasVp6cSxtAoc8QVd9s5NQ6DUUT0xpdnfiGrIrWqej6soegC
+xWP/0/cB4FI0YRji1toIZtY=
+-----END PRIVATE KEY-----`)
+	tlsKeyFile, err := ioutil.TempFile("", "tls")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if _, err := tlsKeyFile.Write(tlsKey); err != nil {
+		log.Fatal(err)
+	}
+	if err := tlsKeyFile.Close(); err != nil {
+		log.Fatal(err)
+	}
+	return tlsCertFile.Name(), tlsKeyFile.Name()
+}
+
 func init() {
 	var wg sync.WaitGroup
 	wg.Add(1)
+	crt, key := newTLSCert()
+	defer os.Remove(crt)
+	defer os.Remove(key)
+	log.SetOutput(ioutil.Discard)
 
 	go func() { // subtract method remote server
 		s := NewMuxServer(":31501", nil)
@@ -134,15 +212,35 @@ func init() {
 		s.Start()
 	}()
 
+	go func() { // subtract method remote TLS server
+		s := NewMuxServer(":31510", nil)
+		h := NewMuxHandler()
+		h.Register("subtract", Method{Method: Subtract})
+		s.AddHandler("/api/v3/rpc", h)
+		s.StartTLS(crt, key)
+	}()
+
 	go func() { // primary server with subtract remote server proxy
 		s := NewServer(":31500", "/api/v1/rpc", map[string]string{
 			"X-Test-Header": "some-test-value",
 		})
 		s.Register("sum", Method{Method: Sum})
 		s.RegisterWithContext("say", MethodWithContext{Method: Say})
+		s.StartWithMiddleware(func(next http.HandlerFunc) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				req := r.WithContext(context.WithValue(r.Context(), "user", r.Header.Get("user")))
+				next(w, req)
+			}
+		})
+	}()
+
+	go func() { // primary server with subtract remote TLS server proxy
+		s := NewServer(":31511", "/api/v4/rpc", map[string]string{
+			"X-Test-Header": "some-test-value",
+		})
 		s.Register("update", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
 		s.Register("foobar", Method{Method: func(params json.RawMessage) (interface{}, *ErrorObject) { return nil, nil }})
-		s.StartWithMiddleware(func(next http.HandlerFunc) http.HandlerFunc {
+		s.StartTLSWithMiddleware(crt, key, func(next http.HandlerFunc) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
 				req := r.WithContext(context.WithValue(r.Context(), "user", r.Header.Get("user")))
 				next(w, req)
@@ -156,6 +254,13 @@ func init() {
 			buf := bytes.NewBuffer([]byte(body))
 			_, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
 			if err != nil {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			body2 := `{"jsonrpc": "2.0", "method": "jrpc2.register", "params": ["subtract", "http://localhost:31510/api/v3/rpc"]}`
+			buf2 := bytes.NewBuffer([]byte(body2))
+			_, err2 := http.Post("http://localhost:31511/api/v4/rpc", "application/json", buf2)
+			if err2 != nil {
 				time.Sleep(1 * time.Second)
 				continue
 			}
@@ -308,7 +413,7 @@ func TestNotification(t *testing.T) {
 
 	for _, body := range table {
 		buf := bytes.NewBuffer([]byte(body))
-		resp, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
+		resp, err := http.Post("http://localhost:31511/api/v4/rpc", "application/json", buf)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -357,10 +462,9 @@ func TestCallWithInvalidJSON(t *testing.T) {
 		Result  interface{} `json:"result"`
 		Id      int         `json:"id"`
 	}
-
 	body := `{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]`
 	buf := bytes.NewBuffer([]byte(body))
-	resp, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
+	resp, err := http.Post("http://localhost:31511/api/v4/rpc", "application/json", buf)
 	if err != nil {
 		t.Fatal(err)
 	}
