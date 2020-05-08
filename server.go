@@ -210,6 +210,10 @@ type Server struct {
 
 // rpcHandler handles incoming rpc client requests.
 func (s *Server) rpcHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	for header, value := range s.Headers {
+		w.Header().Set(header, value)
+	}
 	if err := s.ParseRequest(w, r); err != nil {
 		w.Write(NewResponse(nil, err, nil, true))
 		return
@@ -218,10 +222,6 @@ func (s *Server) rpcHandler(w http.ResponseWriter, r *http.Request) {
 
 // HandleRequest validates, calls, and returns the result of a single rpc client request.
 func (s *Server) HandleRequest(w http.ResponseWriter, req *RequestObject) {
-	w.Header().Set("Content-Type", "application/json")
-	for header, value := range s.Headers {
-		w.Header().Set(header, value)
-	}
 	if err := s.ValidateRequest(req); err != nil {
 		w.Write(NewResponse(nil, err, req.Id, true))
 		return
