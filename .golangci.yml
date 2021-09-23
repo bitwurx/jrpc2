@@ -1,0 +1,29 @@
+# This file configures github.com/golangci/golangci-lint.
+
+run:
+  timeout: 3m
+  tests: true
+  skip-dirs-use-default: true
+  skip-files: []
+
+linters:
+  disable-all: true
+  enable:
+    - deadcode
+    - goconst
+    - goimports
+    - gosimple
+    - govet
+    # - ineffassign
+    - misspell
+    # - staticcheck
+    - unconvert
+    # - unused
+    - varcheck
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goconst:
+    min-len: 3 # minimum length of string constant
+    min-occurrences: 6 # minimum number of occurrences

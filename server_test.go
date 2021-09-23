@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -23,7 +22,7 @@ type SumParams struct {
 
 func (ap *SumParams) FromPositional(params []interface{}) error {
 	if len(params) != 2 {
-		return errors.New(fmt.Sprintf("exactly two integers are required"))
+		return fmt.Errorf("exactly two integers are required")
 	}
 
 	x := params[0].(float64)
@@ -59,7 +58,7 @@ type SubtractParams struct {
 
 func (ap *SubtractParams) FromPositional(params []interface{}) error {
 	if len(params) != 2 {
-		return errors.New(fmt.Sprintf("exactly two integers are required"))
+		return fmt.Errorf("exactly two integers are required")
 	}
 
 	x := params[0].(float64)
