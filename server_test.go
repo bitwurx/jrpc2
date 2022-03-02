@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -127,23 +128,23 @@ func Say(ctx context.Context, params json.RawMessage) (interface{}, *ErrorObject
 
 func newTLSCert() (string, string) {
 	tlsCert := []byte(`-----BEGIN CERTIFICATE-----
-MIIDBzCCAe+gAwIBAgIUVnylqJoVhV2TkZyMnoG5d1WntGcwDQYJKoZIhvcNAQEL
-BQAwEzERMA8GA1UEAwwIdGVzdC5jb20wHhcNMjAwMTMwMTkwMTA0WhcNMjEwMTI5
-MTkwMTA0WjATMREwDwYDVQQDDAh0ZXN0LmNvbTCCASIwDQYJKoZIhvcNAQEBBQAD
-ggEPADCCAQoCggEBAMGrFhH2esQ6kpRzZaWcB8Gv+P3oD+VGP6rnAGhItNdI//sg
-DvPJY9Icl3KJCfLBNeFlZ2b9bnJqX1Q04+ZOPniJBvAEaOFmMRZShV/61BUpdH7o
-BVMCPfcOvtj/u3Q/rSNOwtoipzkARwgOogak20MIy5s5z44NYHgALDjU7DNxsiep
-VprFXEVvYFlZbwyAAn9FeK1q0WbSH7yNe0STgDgoB5o5C/NCWzT/lE+GXFnwRphC
-OLCn3tpdHpO1TruUEDd6ejIOfbq4o2Rar1WA3X8wUkKKrRRWoKYWNsGz2NKlP+Dr
-l/u+5s4z0tWUmwQ0IYEng4lehV0AM2AEQ33t5fsCAwEAAaNTMFEwHQYDVR0OBBYE
-FD7rpYF1pvkAl2ZiUq7rl2Ek0+hXMB8GA1UdIwQYMBaAFD7rpYF1pvkAl2ZiUq7r
-l2Ek0+hXMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAIPqxd88
-Hq+crhH1HlJCphlLXgKDLRaqYYxmhr7c8BCmJC23KLilAEsSC/CCUMi+ZPgoLDhs
-n2qTYTu0FNWR0OaHfH9JIuC5c+/L/ppFyiQOtU4t1uU12/xcVbKDeGt48zoyxkDG
-gY662VrkNbqF5SA45OVhFoVwxeRnxoSuTTAM38Ai4PjvTEg5VLeV53j17Vxq/es6
-UgGKCPWbWOxtbOY1ZgQqCXJnfn6GogGEs+l1Ww6IwmtnhtUQtGs96cGdKw9Vtbrp
-GiDcGN2r88C+o32l3F4Gco9X5iVCQz4RkO1gOaj1IZ2136g3Ko3e/YGx3R7j+4ze
-b3PnPxfPhlb8D6k=
+MIIDITCCAgmgAwIBAgIUMNBQr3kf3X1swwE6vbaNS74xQJ0wDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MCAXDTIyMDMwMjIwNDMwOVoYDzIxMjIw
+MjA2MjA0MzA5WjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwggEiMA0GCSqGSIb3DQEB
+AQUAA4IBDwAwggEKAoIBAQDZxW11LNPTrhSBqjoXO0c4jFEJ669Js1UmQxgf9/5Q
+M3s9kQrcQLOQM00LpcVS43ko1FANAwhMajp+wJjDY2t3eBQgS+XcqFv5HqQeo+Qw
+cJVwvUm8sEF3qlHgtFm5Yei36hn0Id1oUTPJEjki3USmLmeIo7ofKqLuMG2+zsEq
+9Krq9B+9BYYKtYFDZIBsEx9IZVFBuLXbhjTooCDDVNASNIgYG779OY6mTGv10QqM
+zBC+U2wd0Vk3xhQ/3BKfC3t6GI6x/WSKGzmUe6LB5wfKubiCqfNEupt8+PdEhTAB
+rNEluJeaPIWn9MS2GVm8D2l6Zi5zBK75+EQmh75ZelOlAgMBAAGjaTBnMB0GA1Ud
+DgQWBBQByHuYCt/2rpJEHdH+M11cx5vsrjAfBgNVHSMEGDAWgBQByHuYCt/2rpJE
+HdH+M11cx5vsrjAPBgNVHRMBAf8EBTADAQH/MBQGA1UdEQQNMAuCCWxvY2FsaG9z
+dDANBgkqhkiG9w0BAQsFAAOCAQEAud/HFsPIyDjBROBBmn6YpKfoAOoUS20hf9nF
+TAy7A8JbWx2V7ba13mjYOiutz6AsKpICc5pXdbt11dySajT3Vnts73RO9ajlIA6i
+LQ4/0GW10V2gvNuCxZkCYZfKraRJx1uXFcZXCzMiLNtFnk07RtT/cT6ZzZi0oTSJ
+zmf0Vx0rKjNgJPUZyvbn6XU4x5PAHuXKAzrrN44YPHlsuS7dblzqyp4VQ1UfCH4M
+psmMk3xlbaBDSoH2WkPSLKIdqVJ6vgiD3JA1oeH4hgvNG4MdpF1zdDESy9ZmnfBs
+Kx1Jw+4W8q9h5I15UDZVWByWk5LMysMoktewZuNW2qVQHvGCvQ==
 -----END CERTIFICATE-----`)
 	tlsCertFile, err := ioutil.TempFile("", "tls")
 	if err != nil {
@@ -156,32 +157,32 @@ b3PnPxfPhlb8D6k=
 		log.Fatal(err)
 	}
 	tlsKey := []byte(`-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBqxYR9nrEOpKU
-c2WlnAfBr/j96A/lRj+q5wBoSLTXSP/7IA7zyWPSHJdyiQnywTXhZWdm/W5yal9U
-NOPmTj54iQbwBGjhZjEWUoVf+tQVKXR+6AVTAj33Dr7Y/7t0P60jTsLaIqc5AEcI
-DqIGpNtDCMubOc+ODWB4ACw41OwzcbInqVaaxVxFb2BZWW8MgAJ/RXitatFm0h+8
-jXtEk4A4KAeaOQvzQls0/5RPhlxZ8EaYQjiwp97aXR6TtU67lBA3enoyDn26uKNk
-Wq9VgN1/MFJCiq0UVqCmFjbBs9jSpT/g65f7vubOM9LVlJsENCGBJ4OJXoVdADNg
-BEN97eX7AgMBAAECggEADsK+bOIPW1Nnhp8A+U1aHf4OiTOduojPI3R1yHz6I4px
-0C8SVKxdyk7ZkCY3tuPY+nPjHKtmNpw65c0eLZh7FG7FM5fycnN6fEwP1E/myDIf
-qeh/N2NtW54pF5ruK58K0C0ZlsybWDHYOBn9aWo5N/O8qPkQA7CrUJoaxL4dvpHi
-qh6o/sZ/SA9YdjRB5mmF2U8Fx/A7blhtN62XskBttX4RZTW1szgZnN5QzcakCQUw
-rCrzwEzvNT3WWJdcZ4skt7QMqGkfkE3u00UVKr/o5WVKoJSWWcVHmIR7ioKegRKa
-CVJpCEE7dGI461A8degduZwjbL2VXOwBNWYT26TvIQKBgQD5677EQnpt7E/so4gj
-lvZW2/XLNWN7FuR7vh9ecKy1sVC4AobtZdOIlI54vOsuO+OqqKQ13nLPGF8DZRSx
-QFo5Wiz86y71Mbk54YSxVoJt27oc8Zn+86vzZM6xuB2/8a6KpGTP10xC6UXTnRYx
-fexhLteGsfZaLrdu4qMh97/3KwKBgQDGYQ6LTRg9mvLWL9x2UnXSphXckh1oUrQB
-XkeajhdG3cZNHkaziyMH4N5KJ8aZgZFQec9RofHYWJ4iO5vmd9C1qViKhv/s6hfn
-Uo/bqpRC+6fRfDyJGxlpdcGzHNk8TyYB3GhSBoDnJ9RA2JhBIZfgNr8MHtnJkpBo
-/FBo7m9kcQKBgHE3i8cq+n17lUV1W8ILrHLy2GmDORrU5xLrsRg+YO86cX+6nVdE
-TszLx7MIml3qgZuZJDLHICmTN8+45ePabEUZBdJZ1H79VJTVBiC0OQf9h1V/Waz2
-xEnRvBUkfE2s9c4W5RiGxyR0us4/loM7MW9hIgAB9MEr8qtH/nDv5EXbAoGBALlv
-jlXeifNEPQzEDnO4HxT6VWMqXjzfWg4RYCN0AQQoWK5Lx9EbFXLO21s8FSP2/qvY
-QVhQZi5Sn/bl+5QSmdDF7NMI4IBITnHYNksjB5YZgUSLulZ7M2TmQ1s3c0Uxwxho
-PEe4dpQdIgY/sQro6PwYkLs2t2P6Ee1hNZTwlMWxAoGAGecr2LApI2beTma0kd5t
-WzoVUIF/vTrILivPZT7/TbLgxCKPKIu6T4GnlflJFTL1VgLU47fXOWmAQhG/Vgmq
-NzcjvvSNVQBUflIgNasVp6cSxtAoc8QVd9s5NQ6DUUT0xpdnfiGrIrWqej6soegC
-xWP/0/cB4FI0YRji1toIZtY=
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDZxW11LNPTrhSB
+qjoXO0c4jFEJ669Js1UmQxgf9/5QM3s9kQrcQLOQM00LpcVS43ko1FANAwhMajp+
+wJjDY2t3eBQgS+XcqFv5HqQeo+QwcJVwvUm8sEF3qlHgtFm5Yei36hn0Id1oUTPJ
+Ejki3USmLmeIo7ofKqLuMG2+zsEq9Krq9B+9BYYKtYFDZIBsEx9IZVFBuLXbhjTo
+oCDDVNASNIgYG779OY6mTGv10QqMzBC+U2wd0Vk3xhQ/3BKfC3t6GI6x/WSKGzmU
+e6LB5wfKubiCqfNEupt8+PdEhTABrNEluJeaPIWn9MS2GVm8D2l6Zi5zBK75+EQm
+h75ZelOlAgMBAAECggEBAL4yr5nykAPGe8SP/3KA5IBgFPtcLFlrVog3e1+YgjZb
+8FxiTKD3pZzhIX51xzTQ1eYyIMRsjJfpA7Pm1MV6FMdgSfu3Lkidhs66006rh8ZC
+3lJ8EGXLbzJrwF1IR0EhYVcYEJjn5u+QVHFeCCcKKEYYK3bswMctvuXXyFIpVA8F
+y384dc+mP8SG5n9YfjLj7cnGkNJNpfMjYWJsjH56bIdAMFk7XR6XTaoy+J6T/NhB
+MSBo8ao36GfzQcbxCGUw+HVP/O6Jq7u3zcVej0iK3GY9Y6Jl4YhrdcnfwpfZzTTI
+4fDxxxlZiieoso3mt2ym7wOLPjm4r4zycGTaZAj7pCECgYEA9E68IzgemfvkvmE/
+p8wXErbGtsIUBLsy8dvW7TsFc6KuFab0vPyL8vIEmqNcnKqT1JL7vmb8dIsXkg2Y
+WbSQ92n9WBRuJyIbr81XvV6IYsC1P9zO8AWIPt/PEd5nM0ylqn9RzMekiMzAeJKJ
+qSlob3sQhrYXCxEK8c/8RgX64P0CgYEA5DGReLb+VWmZaOjUkBWLAjv4VioMCCJ/
+VNMON2fPE7k95XaWdLMQvnP+q9A+sxJf6J3GYYU3RFv7WfTjvdNhjnphFxdTDpmd
+CeeSuJdluZE9PbAs+b74jLR3nwNIWaR+J+PAcV46/4w9KlZ2GMaBKKbxpIyd8/W6
+MNaB/AHwcckCgYATDIiS3m9UZlWhmoeSF9G8vc+ktGFHNSl1vkR13uI/7/FO8uOm
+ULLA0KoXPKGd/ZblPkiuwezxUV8XHkRAyll7USJV2dH07y3leUdcFqDfwlLfleH0
+yRmkfWLx67t0Poe0UZUZOH/VwtFHFXXyYK4p8xiIyG3niP6neCYdd53mKQKBgQCp
+EwkD9iIvytQ95PVJ5IxglWqE/RZ5GIZbpR1Nc/78UC5KTDliMiLf2jYBu4QZTi39
+vpj0PK4cWkK7/jSXu3z3AjnZ0BBcKvkuE4SkfJiEi9ZiVJyeVx71selHyjjbIoPO
+rnMyDG2OVqwjKHjMFpgwNLGqB/4oehMAiI8613z98QKBgBx/QoSto+Yv4DiAvnAW
+e3jH3CGpnfegQuIMQRoGsV3/DS/cN3Ey4GGGLfnxMoIFZaQenm+GtLS6Dfzc1w+u
+5BHqEY8xPgX2YQQ/YWqKMDurt8rWIPS04GYYY3UK2m+2CGlTUuR2kN1yUn88i+PO
+p2d2T8pkQLLdnOk/VdnNu9QR
 -----END PRIVATE KEY-----`)
 	tlsKeyFile, err := ioutil.TempFile("", "tls")
 	if err != nil {
@@ -203,6 +204,8 @@ func init() {
 	defer os.Remove(crt)
 	defer os.Remove(key)
 	log.SetOutput(ioutil.Discard)
+
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
 	go func() { // subtract method remote server
 		s := NewMuxServer(":31501", nil)
@@ -413,7 +416,7 @@ func TestNotification(t *testing.T) {
 
 	for _, body := range table {
 		buf := bytes.NewBuffer([]byte(body))
-		resp, err := http.Post("http://localhost:31511/api/v4/rpc", "application/json", buf)
+		resp, err := http.Post("https://localhost:31511/api/v4/rpc", "application/json", buf)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -464,7 +467,7 @@ func TestCallWithInvalidJSON(t *testing.T) {
 	}
 	body := `{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]`
 	buf := bytes.NewBuffer([]byte(body))
-	resp, err := http.Post("http://localhost:31511/api/v4/rpc", "application/json", buf)
+	resp, err := http.Post("https://localhost:31511/api/v4/rpc", "application/json", buf)
 	if err != nil {
 		t.Fatal(err)
 	}

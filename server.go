@@ -503,7 +503,7 @@ func (s *Server) StartWithMiddleware(m func(next http.HandlerFunc) http.HandlerF
 // route and starts the https server.
 func (s *Server) StartTLSWithMiddleware(certFile, keyFile string, m func(next http.HandlerFunc) http.HandlerFunc) {
 	http.HandleFunc(s.Route, m(s.rpcHandler))
-	s.start()
+	s.startTLS(certFile, keyFile)
 }
 
 // NewServer creates a new server instance.
