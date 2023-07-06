@@ -17,6 +17,13 @@ import (
 	"time"
 )
 
+type JsonRpcResponse struct {
+	Jsonrpc string       `json:"jsonrpc"`
+	Err     *ErrorObject `json:"error"`
+	Result  interface{}  `json:"result"`
+	Id      int          `json:"id"`
+}
+
 type SumParams struct {
 	X *float64 `json:"x"`
 	Y *float64 `json:"y"`
@@ -331,12 +338,7 @@ func TestRpcCallWithPositionalParamters(t *testing.T) {
 }
 
 func TestRpcCallWithPositionalParamtersError(t *testing.T) {
-	var result struct {
-		Jsonrpc string      `json:"jsonrpc"`
-		Result  interface{} `json:"result"`
-		Err     ErrorObject `json:"error"`
-		Id      int         `json:"id"`
-	}
+	var result JsonRpcResponse
 
 	body := `{"jsonrpc": "2.0", "method": "subtract", "params": [999, 999], "id": 1}`
 	buf := bytes.NewBuffer([]byte(body))
@@ -430,12 +432,7 @@ func TestNotification(t *testing.T) {
 }
 
 func TestCallOfNotExistentMethod(t *testing.T) {
-	var result struct {
-		Jsonrpc string      `json:"jsonrpc"`
-		Err     ErrorObject `json:"error"`
-		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
-	}
+	var result JsonRpcResponse
 
 	body := `{"jsonrpc": "2.0", "method": "fooba", "id": "1"}`
 	buf := bytes.NewBuffer([]byte(body))
@@ -459,12 +456,7 @@ func TestCallOfNotExistentMethod(t *testing.T) {
 }
 
 func TestCallWithInvalidJSON(t *testing.T) {
-	var result struct {
-		Jsonrpc string      `json:"jsonrpc"`
-		Err     ErrorObject `json:"error"`
-		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
-	}
+	var result JsonRpcResponse
 	body := `{"jsonrpc": "2.0", "method": "foobar, "params": "bar", "baz]`
 	buf := bytes.NewBuffer([]byte(body))
 	resp, err := http.Post("https://localhost:31511/api/v4/rpc", "application/json", buf)
@@ -487,12 +479,7 @@ func TestCallWithInvalidJSON(t *testing.T) {
 }
 
 func TestCallWithInvalidRequestObject(t *testing.T) {
-	var result struct {
-		Jsonrpc string      `json:"jsonrpc"`
-		Err     ErrorObject `json:"error"`
-		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
-	}
+	var result JsonRpcResponse
 
 	body := `{"jsonrpc": "2.0", "method": 1, "params": "bar"}`
 	buf := bytes.NewBuffer([]byte(body))
@@ -516,12 +503,7 @@ func TestCallWithInvalidRequestObject(t *testing.T) {
 }
 
 func TestBatchCallWithInvalidJSON(t *testing.T) {
-	var result struct {
-		Jsonrpc string      `json:"jsonrpc"`
-		Err     ErrorObject `json:"error"`
-		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
-	}
+	var result JsonRpcResponse
 
 	body := `[
         {"jsonrpc": "2.0", "method": "sum", "params": [1,2,4], "id": "1"},
@@ -548,12 +530,7 @@ func TestBatchCallWithInvalidJSON(t *testing.T) {
 }
 
 func TestBatchCallWithAnEmptyArray(t *testing.T) {
-	var result struct {
-		Jsonrpc string      `json:"jsonrpc"`
-		Err     ErrorObject `json:"error"`
-		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
-	}
+	var result JsonRpcResponse
 
 	body := `[]`
 	buf := bytes.NewBuffer([]byte(body))
@@ -577,12 +554,7 @@ func TestBatchCallWithAnEmptyArray(t *testing.T) {
 }
 
 func TestCallWithAnInvalidBatch(t *testing.T) {
-	var results []struct {
-		Jsonrpc string      `json:"jsonrpc"`
-		Err     ErrorObject `json:"error"`
-		Result  interface{} `json:"result"`
-		Id      int         `json:"id"`
-	}
+	var result JsonRpcResponse
 
 	body := `[]`
 	buf := bytes.NewBuffer([]byte(body))
@@ -638,12 +610,7 @@ func TestCallWithContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var result struct {
-		Jsonrpc string       `json:"jsonrpc"`
-		Error   *ErrorObject `json:"error"`
-		Result  interface{}  `json:"result"`
-		Id      interface{}  `json:"id"`
-	}
+	var result JsonRpcResponse
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
 	dec.Decode(&result)
