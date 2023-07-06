@@ -658,3 +658,39 @@ func TestCallWithContext(t *testing.T) {
 		t.Fatal("Wrong result")
 	}
 }
+
+// TestServerShutdown tests that the server can be shutdown
+func TestServerShutdown(t *testing.T) {
+	srv := NewServer(":31501", "/api/v1/rpc", nil)
+
+	go srv.Start()
+
+	ctx := context.Background()
+
+	if err := srv.Shutdown(ctx, 1*time.Second); err != nil {
+		t.Fatalf("Error shutting down server: %v", err)
+	}
+}
+
+// TestExplicitServerLifecycle tests that the server can be started and stopped explicitly
+func TestExplicitServerLifecycle(t *testing.T) {
+	srv := NewServer(":31502", "/api/v1/rpc", nil)
+	httpServer := srv.Prepare()
+	errs := make(chan error, 1)
+	go func() {
+		if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			errs <- fmt.Errorf("HTTP server exited with unexpected error: %w", err)
+		}
+	}()
+
+	shutdownCtx, shutdownRelease := context.WithTimeout(context.Background(), 1*time.Second)
+	defer shutdownRelease()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("HTTP shutdown error: %v", err)
+	}
+
+	if len(errs) > 0 {
+		t.Fatal(<-errs)
+	}
+}
