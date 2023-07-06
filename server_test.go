@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -208,8 +209,18 @@ func init() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	crt, key := newTLSCert()
-	defer os.Remove(crt)
-	defer os.Remove(key)
+	defer func(name string) {
+		err := os.Remove(name)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(crt)
+	defer func(name string) {
+		err := os.Remove(name)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(key)
 	log.SetOutput(ioutil.Discard)
 
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
@@ -288,7 +299,12 @@ func TestResponseHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}(resp.Body)
 	if v := resp.Header.Get("X-Test-Header"); v != "some-test-value" {
 		t.Fatal("got unexpected X-Test-Header value")
 	}
@@ -320,7 +336,9 @@ func TestRpcCallWithPositionalParamters(t *testing.T) {
 		}
 		rdr := bufio.NewReader(resp.Body)
 		dec := json.NewDecoder(rdr)
-		dec.Decode(&result)
+		if err = dec.Decode(&result); err != nil {
+			t.Errorf("Error decoding response: %v", err)
+		}
 
 		if result.Error != nil {
 			t.Fatal("Expected error to be nil")
@@ -348,7 +366,9 @@ func TestRpcCallWithPositionalParamtersError(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("Expected result to be nil")
@@ -393,7 +413,9 @@ func TestRpcCallWithNamedParameters(t *testing.T) {
 		}
 		rdr := bufio.NewReader(resp.Body)
 		dec := json.NewDecoder(rdr)
-		dec.Decode(&result)
+		if err = dec.Decode(&result); err != nil {
+			t.Errorf("Error decoding response: %v", err)
+		}
 
 		if result.Error != nil {
 			t.Fatal("Expected error to be nil")
@@ -434,7 +456,7 @@ func TestNotification(t *testing.T) {
 func TestCallOfNotExistentMethod(t *testing.T) {
 	var result JsonRpcResponse
 
-	body := `{"jsonrpc": "2.0", "method": "fooba", "id": "1"}`
+	body := `{"jsonrpc": "2.0", "method": "fooba", "id": 1}`
 	buf := bytes.NewBuffer([]byte(body))
 	resp, err := http.Post("http://localhost:31500/api/v1/rpc", "application/json", buf)
 	if err != nil {
@@ -442,7 +464,9 @@ func TestCallOfNotExistentMethod(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -465,7 +489,9 @@ func TestCallWithInvalidJSON(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -489,7 +515,9 @@ func TestCallWithInvalidRequestObject(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -516,7 +544,9 @@ func TestBatchCallWithInvalidJSON(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -540,7 +570,9 @@ func TestBatchCallWithAnEmptyArray(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
 
 	if result.Result != nil {
 		t.Fatal("expected result to be nil")
@@ -564,18 +596,18 @@ func TestCallWithAnInvalidBatch(t *testing.T) {
 	}
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&results)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
 
-	for _, result := range results {
-		if result.Result != nil {
-			t.Fatal("expected result to be nil")
-		}
-		if result.Err.Code != -32600 {
-			t.Fatal("expected error code -32600")
-		}
-		if result.Err.Message != "Invalid Request" {
-			t.Fatal("expected message to be 'Invalid Request'")
-		}
+	if result.Result != nil {
+		t.Fatal("expected result to be nil")
+	}
+	if result.Err.Code != -32600 {
+		t.Fatal("expected error code -32600")
+	}
+	if result.Err.Message != "Invalid Request" {
+		t.Fatal("expected message to be 'Invalid Request'")
 	}
 }
 
@@ -613,9 +645,12 @@ func TestCallWithContext(t *testing.T) {
 	var result JsonRpcResponse
 	rdr := bufio.NewReader(resp.Body)
 	dec := json.NewDecoder(rdr)
-	dec.Decode(&result)
-	if result.Error != nil {
-		fmt.Println(*result.Error)
+	if err = dec.Decode(&result); err != nil {
+		t.Errorf("Error decoding response: %v", err)
+	}
+
+	if result.Err != nil {
+		fmt.Println(*result.Err)
 		t.Fatal("Expected error to be nil")
 	}
 	if result.Result != "Hello bob!" {
