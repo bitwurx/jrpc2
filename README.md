@@ -165,6 +165,87 @@ Methods can also be explicitly registered using the server's Register method:
 
 ```s.Register("add", jrpc2.Method{Url: "http://localhost:8080/api/v1/rpc"})```
 
+### Stopping the Server
+
+The server can be stopped by calling the `Shutdown` method.  The `Shutdown` method accepts a context and a timeout.  
+The timeout is used to limit the amount of time the server will wait for active connections to close.  If the timeout 
+is reached, the server will forcefully close all active connections. If a `timeout` of `0` is provided, the behavior 
+is dependent on the passed in context.
+
+Example:
+```golang
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"time"
+	"github.com/bitwurx/jrpc2"
+)
+
+func Ping(_ json.RawMessage) (interface{}, *jrpc2.ErrorObject) {
+	return "pong", nil
+}
+
+func main() {
+	s := jrpc2.NewServer(":8888", "/api/v1/rpc", nil)
+	s.Register("ping", jrpc2.Method{Method: Ping})
+	go s.Start()
+
+	// do other stuff
+
+	// Gracefully stop the server 
+	ctx := context.Background()
+	if err := s.Shutdown(ctx, 5*time.Second); err != nil {
+		log.Fatalf("%v", err)
+	}
+}
+```
+
+
+### Explicit Server Lifecycle Management
+
+Usually it's enough to call the various `.Start*()` methods (and optionally `.Shutdown()`) to get started.
+In more complex applications you might want to have more direct control over the lifecycle of the underlying http server.
+
+This is possible by using the `.Prepare()` (or `.PrepareWithMiddleware()`) methods instead of calling one of the `.Start*()` methods. 
+It will return the http.Server instance used internally and allow you to fully control it.
+
+Example:
+```golang
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "log"
+    "time"
+    "github.com/bitwurx/jrpc2"
+)
+
+func Ping(_ json.RawMessage) (interface{}, *jrpc2.ErrorObject) {
+    return "pong", nil
+}
+
+func main() {
+    s := jrpc2.NewServer(":8888", "/api/v1/rpc", nil)
+    s.Register("ping", jrpc2.Method{Method: Ping})
+    
+    httpServer := s.Prepare()
+    go httpServer.ListenAndServe()
+
+    // do other stuff
+
+    // Gracefully stop the server 
+    ctx := context.Background()
+    if err := httpServer.Shutdown(ctx, 5*time.Second); err != nil {
+        log.Fatalf("%v", err)
+    }
+}
+```
+
+
 ### Running Tests
 
 This library contains a set of api tests to verify spec compliance. The provided tests are a subset of the [Section 7 Examples](http://www.jsonrpc.org/specification#examples) here.
