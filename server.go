@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Error codes
@@ -202,10 +203,12 @@ type Server struct {
 	// Route is the path to the rpc api.
 	// Methods contains the mapping of registered methods.
 	// Headers contains response headers.
-	Host    string
-	Route   string
-	Methods map[string]MethodWithContext
-	Headers map[string]string
+	Host       string
+	Route      string
+	Methods    map[string]MethodWithContext
+	Headers    map[string]string
+	httpServer *http.Server
+	mux        *http.ServeMux
 }
 
 // rpcHandler handles incoming rpc client requests.
@@ -470,49 +473,75 @@ func (s *Server) Call(ctx context.Context, name interface{}, params json.RawMess
 	}
 }
 
+// Prepare prepares the http.Server instance for accepting requests and returns it but doesn't start it yet.
+func (s *Server) Prepare() *http.Server {
+	s.mux.HandleFunc(s.Route, s.rpcHandler)
+	return s.httpServer
+}
+
+// PrepareWithMiddleware prepares the http.Server instance for accepting requests and returns it but doesn't start it yet.
+func (s *Server) PrepareWithMiddleware(m func(next http.HandlerFunc) http.HandlerFunc) *http.Server {
+	s.mux.HandleFunc(s.Route, m(s.rpcHandler))
+	return s.httpServer
+}
+
 // Start binds the rpcHandler to the server route and starts the http server.
 func (s *Server) Start() {
-	http.HandleFunc(s.Route, s.rpcHandler)
+	s.Prepare()
 	s.start()
 }
 
 func (s *Server) start() {
 	log.Println(fmt.Sprintf("Starting server on %s at %s", s.Host, s.Route))
-	log.Fatal(http.ListenAndServe(s.Host, nil))
+	log.Fatal(s.httpServer.ListenAndServe())
 }
 
-// Start binds the rpcHandler to the server route and starts the https server.
+// StartTLS binds the rpcHandler to the server route and starts the https server.
 func (s *Server) StartTLS(certFile, keyFile string) {
-	http.HandleFunc(s.Route, s.rpcHandler)
+	s.Prepare()
 	s.startTLS(certFile, keyFile)
 }
 
 func (s *Server) startTLS(certFile, keyFile string) {
 	log.Println(fmt.Sprintf("Starting server on %s at %s", s.Host, s.Route))
-	log.Fatal(http.ListenAndServeTLS(s.Host, certFile, keyFile, nil))
+	log.Fatal(s.httpServer.ListenAndServeTLS(certFile, keyFile))
 }
 
 // StartWithMiddleware binds the rpcHandler, with its middleware to the server
 // route and starts the http server.
 func (s *Server) StartWithMiddleware(m func(next http.HandlerFunc) http.HandlerFunc) {
-	http.HandleFunc(s.Route, m(s.rpcHandler))
+	s.PrepareWithMiddleware(m)
 	s.start()
 }
 
-// StartWithMiddleware binds the rpcHandler, with its middleware to the server
+// StartTLSWithMiddleware binds the rpcHandler, with its middleware to the server
 // route and starts the https server.
 func (s *Server) StartTLSWithMiddleware(certFile, keyFile string, m func(next http.HandlerFunc) http.HandlerFunc) {
-	http.HandleFunc(s.Route, m(s.rpcHandler))
+	s.PrepareWithMiddleware(m)
 	s.startTLS(certFile, keyFile)
+}
+
+// Shutdown stops the server from accepting new requests and shuts down the server.
+// If timeout is not 0, the given context is wrapped in a new context with the given timeout.
+func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) error {
+	if timeout > 0 {
+		var release func()
+		ctx, release = context.WithTimeout(ctx, timeout)
+		defer release()
+	}
+	return s.httpServer.Shutdown(ctx)
 }
 
 // NewServer creates a new server instance.
 func NewServer(host, route string, headers map[string]string) *Server {
+	mux := http.NewServeMux()
 	s := &Server{
-		Host:    host,
-		Route:   route,
-		Methods: make(map[string]MethodWithContext),
-		Headers: headers,
+		Host:       host,
+		Route:      route,
+		Methods:    make(map[string]MethodWithContext),
+		Headers:    headers,
+		httpServer: &http.Server{Addr: host, Handler: mux},
+		mux:        mux,
 	}
 
 	s.Methods["jrpc2.register"] = MethodWithContext{Method: s.RegisterRPC}
@@ -551,36 +580,41 @@ type MuxServer struct {
 	Host     string
 	Headers  map[string]string
 	Handlers map[string]*MuxHandler
+
+	httpServer *http.Server
+	mux        *http.ServeMux
+}
+
+// Prepare
+func (s *MuxServer) Prepare() *http.Server {
+	for route, handler := range s.Handlers {
+		srv := &Server{
+			Host:       s.Host,
+			Methods:    handler.Methods,
+			Headers:    s.Headers,
+			httpServer: s.httpServer,
+			mux:        s.mux,
+		}
+		s.mux.HandleFunc(route, srv.rpcHandler)
+		log.Println(fmt.Sprintf("adding handler at %s", route))
+	}
+	return s.httpServer
 }
 
 // Start Starts binds all server rpcHandlers to their handler routes and
 // starts the http server.
 func (s *MuxServer) Start() {
-	for route, handler := range s.Handlers {
-		s := &Server{
-			Methods: handler.Methods,
-			Headers: s.Headers,
-		}
-		http.HandleFunc(route, s.rpcHandler)
-		log.Println(fmt.Sprintf("adding handler at %s", route))
-	}
+	httpServer := s.Prepare()
 	log.Println(fmt.Sprintf("Starting server on %s", s.Host))
-	log.Fatal(http.ListenAndServe(s.Host, nil))
+	log.Fatal(httpServer.ListenAndServe())
 }
 
-// Start Starts binds all server rpcHandlers to their handler routes and
+// StartTLS Starts binds all server rpcHandlers to their handler routes and
 // starts the https server.
 func (s *MuxServer) StartTLS(certFile, keyFile string) {
-	for route, handler := range s.Handlers {
-		s := &Server{
-			Methods: handler.Methods,
-			Headers: s.Headers,
-		}
-		http.HandleFunc(route, s.rpcHandler)
-		log.Println(fmt.Sprintf("adding handler at %s", route))
-	}
+	httpServer := s.Prepare()
 	log.Println(fmt.Sprintf("Starting server on %s", s.Host))
-	log.Fatal(http.ListenAndServeTLS(s.Host, certFile, keyFile, nil))
+	log.Fatal(httpServer.ListenAndServeTLS(certFile, keyFile))
 }
 
 // AddHandler add the handler to the mux handlers.
@@ -588,7 +622,20 @@ func (s *MuxServer) AddHandler(route string, handler *MuxHandler) {
 	s.Handlers[route] = handler
 }
 
+// Shutdown stops the server from accepting new requests and shuts down the server.
+// If timeout is not 0, the given context is wrapped in a new context with the given timeout.
+func (s *MuxServer) Shutdown(ctx context.Context, timeout time.Duration) error {
+	if timeout > 0 {
+		var release func()
+		ctx, release = context.WithTimeout(ctx, timeout)
+		defer release()
+	}
+	return s.httpServer.Shutdown(ctx)
+}
+
 // NewMuxServer creates a new mux handler instance.
 func NewMuxServer(host string, headers map[string]string) *MuxServer {
-	return &MuxServer{host, headers, make(map[string]*MuxHandler)}
+	mux := http.NewServeMux()
+	httpServer := &http.Server{Addr: host, Handler: mux}
+	return &MuxServer{host, headers, make(map[string]*MuxHandler), httpServer, mux}
 }
